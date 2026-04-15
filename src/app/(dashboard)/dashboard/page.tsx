@@ -10,7 +10,6 @@ import {
 import { StatCard } from "@/components/dashboard/stat-card";
 import { OrdersToday } from "@/components/dashboard/orders-today";
 import { StockAlerts } from "@/components/dashboard/stock-alerts";
-import { OutstandingInvoices } from "@/components/dashboard/outstanding-invoices";
 import { SeasonalReminders } from "@/components/dashboard/seasonal-reminders";
 import { BrandingCardAlerts } from "@/components/dashboard/branding-card-alerts";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
@@ -72,7 +71,6 @@ export default function DashboardPage() {
       {/* Main Dashboard Panels */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
         <OrdersToday />
-        <OutstandingInvoices />
       </div>
 
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
