@@ -120,7 +120,7 @@ export default function FourSidedFloorStandPage() {
 
   // ── Slot mutation ──
   const setSlotValue = useCallback((sideIdx: number, rowIdx: number, slotIdx: number, value: number) => {
-    const clamped = Math.max(1, Math.min(6, value));
+    const clamped = Math.max(1, value);
     setSlots((prev) => {
       const next = prev.map((s) => s.map((r) => [...r]));
       next[sideIdx][rowIdx][slotIdx] = clamped;
@@ -129,7 +129,7 @@ export default function FourSidedFloorStandPage() {
   }, []);
 
   const increment = (si: number, ri: number, sli: number) =>
-    setSlotValue(si, ri, sli, Math.min(6, slots[si][ri][sli] + 1));
+    setSlotValue(si, ri, sli, slots[si][ri][sli] + 1);
   const decrement = (si: number, ri: number, sli: number) =>
     setSlotValue(si, ri, sli, Math.max(1, slots[si][ri][sli] - 1));
 
@@ -299,14 +299,13 @@ export default function FourSidedFloorStandPage() {
                               </button>
                               <span className={cn(
                                 "w-7 text-center text-sm font-bold tabular-nums",
-                                qty === 6 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
+                                qty >= 6 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
                               )}>
                                 {qty}
                               </span>
                               <button
                                 onClick={() => increment(activeIdx, ri, si)}
-                                disabled={qty >= 6}
-                                className="flex h-7 w-7 items-center justify-center rounded-lg hover:bg-accent/60 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                className="flex h-7 w-7 items-center justify-center rounded-lg hover:bg-accent/60 transition-colors"
                               >
                                 <Plus className="h-3 w-3" />
                               </button>
