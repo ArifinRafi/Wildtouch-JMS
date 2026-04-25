@@ -265,7 +265,7 @@ export default function AllDesignsMagnetsPage() {
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="border-b border-border/30 bg-muted/30">
-                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-muted-foreground w-8">#</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-muted-foreground w-8">Row</th>
                     {[1, 2, 3].map((n) => (
                       <th key={n} className="px-3 py-2.5 text-center text-[11px] font-semibold text-muted-foreground">
                         Column {n}
