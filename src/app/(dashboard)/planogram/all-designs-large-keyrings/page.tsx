@@ -1,95 +1,133 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
-import {
-  ArrowLeft,
-  Search,
-  Printer,
-  Package,
-  X,
-  ChevronDown,
-  ChevronUp,
-  ImageOff,
-} from "lucide-react";
+import { ArrowLeft, Printer, Package, X, ImageOff } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { KEYRING_SECTIONS, ALL_PRODUCTS_COUNT } from "@/lib/data/large-keyrings";
+import { KEYRING_ROWS, TOTAL_PRODUCTS, type KeyringProduct } from "@/lib/data/large-keyrings";
 
-// ─── State helpers ─────────────────────────────────────────────────────────────
-type Quantities = Record<string, number>; // key = "sectionId:productIndex"
+// ─── Flat product list with row/col position for keying ──────────────────────
+type Cell = { product: KeyringProduct; rowIdx: number; colIdx: number };
 
-function qKey(sectionId: string, idx: number) {
-  return `${sectionId}:${idx}`;
+const ALL_CELLS: Cell[] = KEYRING_ROWS.flatMap((row, rowIdx) =>
+  row
+    .map((product, colIdx) => (product ? { product, rowIdx, colIdx } : null))
+    .filter((c): c is Cell => c !== null)
+);
+
+function cellKey(rowIdx: number, colIdx: number) {
+  return `${rowIdx}:${colIdx}`;
 }
 
-export default function AllDesignsLargeKeyringsPage() {
-  const [quantities, setQuantities]   = useState<Quantities>({});
-  const [search, setSearch]           = useState("");
-  const [activeSection, setActiveSection] = useState<string | null>(null);
-  const [collapsed, setCollapsed]     = useState<Record<string, boolean>>({});
-  const printRef = useRef<HTMLDivElement>(null);
+// ─── Product card ─────────────────────────────────────────────────────────────
+function ProductCard({
+  product,
+  qty,
+  onIncrement,
+  onDecrement,
+  onChange,
+}: {
+  product: KeyringProduct;
+  qty: number;
+  onIncrement: () => void;
+  onDecrement: () => void;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center rounded-xl border bg-background/50 p-2 gap-1.5 transition-all",
+        qty > 0
+          ? "border-primary/40 shadow-sm shadow-primary/10 bg-primary/5"
+          : "border-border/30 hover:border-border/60"
+      )}
+    >
+      {/* Image */}
+      <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-muted/30 flex items-center justify-center">
+        {product.image ? (
+          <Image
+            src={product.image}
+            alt={product.name}
+            fill
+            className="object-contain p-1"
+            sizes="120px"
+            unoptimized
+          />
+        ) : (
+          <ImageOff className="h-5 w-5 text-muted-foreground/30" />
+        )}
+      </div>
 
-  // ── Computed totals ──────────────────────────────────────────────────────────
+      {/* Name */}
+      <p className="text-[10px] text-center font-medium leading-tight text-foreground/80 line-clamp-2 w-full">
+        {product.name}
+      </p>
+
+      {/* Qty controls */}
+      <div className="flex items-center gap-1 mt-0.5">
+        <button
+          onClick={onDecrement}
+          disabled={qty <= 0}
+          className="h-5 w-5 rounded-md flex items-center justify-center text-xs font-bold border border-border/40 hover:bg-accent/60 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        >
+          −
+        </button>
+        <input
+          type="number"
+          min={0}
+          value={qty === 0 ? "" : qty}
+          placeholder="0"
+          onChange={(e) => {
+            const v = parseInt(e.target.value, 10);
+            onChange(isNaN(v) ? 0 : Math.max(0, v));
+          }}
+          className={cn(
+            "w-8 text-center text-xs font-bold tabular-nums bg-transparent focus:outline-none border-b",
+            qty > 0
+              ? "border-primary text-primary"
+              : "border-border/40 text-muted-foreground"
+          )}
+        />
+        <button
+          onClick={onIncrement}
+          className="h-5 w-5 rounded-md flex items-center justify-center text-xs font-bold border border-border/40 hover:bg-accent/60 transition-colors"
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+export default function AllDesignsLargeKeyringsPage() {
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+
   const grandTotal = useMemo(
     () => Object.values(quantities).reduce((a, b) => a + b, 0),
     [quantities]
   );
 
-  const sectionTotals = useMemo(
-    () =>
-      Object.fromEntries(
-        KEYRING_SECTIONS.map((sec) => [
-          sec.id,
-          sec.products.reduce(
-            (sum, _, idx) => sum + (quantities[qKey(sec.id, idx)] ?? 0),
-            0
-          ),
-        ])
-      ),
-    [quantities]
-  );
-
-  // ── Handlers ─────────────────────────────────────────────────────────────────
-  const setQty = (sectionId: string, idx: number, val: number) => {
-    const clamped = Math.max(0, val);
-    setQuantities((prev) => ({ ...prev, [qKey(sectionId, idx)]: clamped }));
-  };
+  const setQty = (rowIdx: number, colIdx: number, val: number) =>
+    setQuantities((prev) => ({ ...prev, [cellKey(rowIdx, colIdx)]: Math.max(0, val) }));
 
   const clearAll = () => setQuantities({});
 
-  const toggleCollapse = (id: string) =>
-    setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
-
-  // ── Filter ───────────────────────────────────────────────────────────────────
-  const searchLower = search.toLowerCase();
-  const filteredSections = useMemo(
-    () =>
-      KEYRING_SECTIONS.map((sec) => ({
-        ...sec,
-        products: sec.products.filter(
-          (p) =>
-            (!search || p.name.toLowerCase().includes(searchLower)) &&
-            (!activeSection || activeSection === sec.id)
-        ),
-      })).filter((sec) => sec.products.length > 0),
-    [search, searchLower, activeSection]
-  );
-
-  // ── Print ────────────────────────────────────────────────────────────────────
+  // Print order
   const handlePrint = () => {
-    const orderedProducts = KEYRING_SECTIONS.flatMap((sec) =>
-      sec.products
-        .map((p, idx) => ({ ...p, section: sec.title, qty: quantities[qKey(sec.id, idx)] ?? 0 }))
-        .filter((p) => p.qty > 0)
-    );
+    const ordered = ALL_CELLS.filter(
+      ({ rowIdx, colIdx }) => (quantities[cellKey(rowIdx, colIdx)] ?? 0) > 0
+    ).map(({ product, rowIdx, colIdx }) => ({
+      name: product.name,
+      qty: quantities[cellKey(rowIdx, colIdx)],
+    }));
 
-    const rows = orderedProducts
+    const rows = ordered
       .map(
         (p, i) =>
           `<tr style="background:${i % 2 === 0 ? "#f9fafb" : "#fff"}">
-            <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${p.section}</td>
             <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">${p.name}</td>
             <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700">${p.qty}</td>
           </tr>`
@@ -113,13 +151,13 @@ export default function AllDesignsLargeKeyringsPage() {
   <div class="brand">Wildtouch JMS — All Designs Large Keyrings</div>
   <div class="sub">Order Form · ${new Date().toLocaleDateString("en-GB")} · Grand Total: ${grandTotal} units</div>
 </header>
-${orderedProducts.length === 0
-  ? "<p style='color:#888;margin-top:20px'>No quantities entered.</p>"
-  : `<table>
-  <thead><tr><th>Section</th><th>Product</th><th style="text-align:center">Qty</th></tr></thead>
+${ordered.length === 0
+      ? "<p style='color:#888;margin-top:20px'>No quantities entered.</p>"
+      : `<table>
+  <thead><tr><th>Product</th><th style="text-align:center;width:80px">Qty</th></tr></thead>
   <tbody>${rows}</tbody>
   <tfoot><tr class="total-row">
-    <td colspan="2" style="padding:8px 10px">Grand Total</td>
+    <td style="padding:8px 10px">Grand Total</td>
     <td style="padding:8px 10px;text-align:center">${grandTotal}</td>
   </tr></tfoot>
 </table>`}
@@ -134,7 +172,7 @@ ${orderedProducts.length === 0
   };
 
   return (
-    <div className="space-y-6 pb-16">
+    <div className="space-y-5 pb-20">
       {/* ── Header ── */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
         <Link
@@ -149,7 +187,7 @@ ${orderedProducts.length === 0
               All Designs — Large Keyrings
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {ALL_PRODUCTS_COUNT} designs across {KEYRING_SECTIONS.length} categories &middot;{" "}
+              {TOTAL_PRODUCTS} designs &middot;{" "}
               <span className="font-semibold text-primary">{grandTotal} ordered</span>
             </p>
           </div>
@@ -176,223 +214,45 @@ ${orderedProducts.length === 0
         </div>
       </motion.div>
 
-      {/* ── Search + section filters ── */}
+      {/* ── 3-column grid — exact Excel layout ── */}
       <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.05 }}
-        className="space-y-3"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3, delay: 0.1 }}
+        className="rounded-2xl border border-border/40 bg-card/70 glass p-4"
       >
-        {/* Search bar */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Search product name…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-xl border border-border/40 bg-card/70 pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 transition placeholder:text-muted-foreground/50"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {KEYRING_ROWS.map((row, rowIdx) =>
+            row.map((product, colIdx) => {
+              const key = cellKey(rowIdx, colIdx);
+              const qty = quantities[key] ?? 0;
 
-        {/* Section filter chips */}
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setActiveSection(null)}
-            className={cn(
-              "rounded-full px-3 py-1 text-xs font-semibold transition-all border",
-              activeSection === null
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-card/60 border-border/40 text-muted-foreground hover:text-foreground"
-            )}
-          >
-            All
-          </button>
-          {KEYRING_SECTIONS.map((sec) => (
-            <button
-              key={sec.id}
-              onClick={() => setActiveSection(activeSection === sec.id ? null : sec.id)}
-              className={cn(
-                "rounded-full px-3 py-1 text-xs font-semibold transition-all border",
-                activeSection === sec.id
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-card/60 border-border/40 text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {sec.title}
-              {sectionTotals[sec.id] > 0 && (
-                <span className="ml-1.5 rounded-full bg-primary/20 text-primary px-1.5 py-0.5 text-[10px] font-bold">
-                  {sectionTotals[sec.id]}
-                </span>
-              )}
-            </button>
-          ))}
+              if (!product) {
+                // Empty cell — keep the grid slot so alignment matches Excel
+                return (
+                  <div
+                    key={`${rowIdx}-${colIdx}-empty`}
+                    className="rounded-xl border border-dashed border-border/20 aspect-auto min-h-[120px]"
+                  />
+                );
+              }
+
+              return (
+                <ProductCard
+                  key={key}
+                  product={product}
+                  qty={qty}
+                  onIncrement={() => setQty(rowIdx, colIdx, qty + 1)}
+                  onDecrement={() => setQty(rowIdx, colIdx, Math.max(0, qty - 1))}
+                  onChange={(v) => setQty(rowIdx, colIdx, v)}
+                />
+              );
+            })
+          )}
         </div>
       </motion.div>
 
-      {/* ── Sections ── */}
-      <div className="space-y-6" ref={printRef}>
-        <AnimatePresence initial={false}>
-          {filteredSections.map((sec, secIdx) => {
-            const isCollapsed = collapsed[sec.id];
-            const secTotal = sectionTotals[sec.id];
-
-            return (
-              <motion.div
-                key={sec.id}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.3, delay: secIdx * 0.04 }}
-                className="rounded-2xl border border-border/40 bg-card/70 glass overflow-hidden"
-              >
-                {/* Section header */}
-                <button
-                  onClick={() => toggleCollapse(sec.id)}
-                  className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-accent/20 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`h-3 w-3 rounded-full bg-gradient-to-br ${sec.color}`} />
-                    <span className="font-semibold text-sm">{sec.title}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {sec.products.length} designs
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {secTotal > 0 && (
-                      <span className="text-xs font-bold text-primary bg-primary/10 rounded-full px-2.5 py-0.5">
-                        {secTotal} ordered
-                      </span>
-                    )}
-                    {isCollapsed
-                      ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                      : <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                    }
-                  </div>
-                </button>
-
-                {/* Product grid */}
-                <AnimatePresence initial={false}>
-                  {!isCollapsed && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-                      className="overflow-hidden"
-                    >
-                      <div className={`h-0.5 bg-gradient-to-r ${sec.color} opacity-40`} />
-                      <div className="p-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-3">
-                        {sec.products.map((product, idx) => {
-                          const key = qKey(sec.id, idx);
-                          // find original index in full section for correct key
-                          const origSection = KEYRING_SECTIONS.find((s) => s.id === sec.id);
-                          const origIdx = origSection
-                            ? origSection.products.findIndex((p) => p.name === product.name)
-                            : idx;
-                          const trueKey = qKey(sec.id, origIdx);
-                          const qty = quantities[trueKey] ?? 0;
-
-                          return (
-                            <motion.div
-                              key={key}
-                              initial={{ opacity: 0, scale: 0.9 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              transition={{ duration: 0.2, delay: idx * 0.01 }}
-                              className={cn(
-                                "flex flex-col items-center rounded-xl border bg-background/50 p-2 gap-1.5 transition-all",
-                                qty > 0
-                                  ? "border-primary/40 shadow-sm shadow-primary/10 bg-primary/5"
-                                  : "border-border/30 hover:border-border/60"
-                              )}
-                            >
-                              {/* Product image */}
-                              <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-muted/30 flex items-center justify-center">
-                                {product.image ? (
-                                  <Image
-                                    src={product.image}
-                                    alt={product.name}
-                                    fill
-                                    className="object-contain p-1"
-                                    sizes="120px"
-                                    unoptimized
-                                  />
-                                ) : (
-                                  <div className="flex flex-col items-center gap-1 text-muted-foreground/40">
-                                    <ImageOff className="h-5 w-5" />
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Name */}
-                              <p className="text-[10px] text-center font-medium leading-tight text-foreground/80 line-clamp-2 w-full">
-                                {product.name}
-                              </p>
-
-                              {/* Quantity input */}
-                              <div className="flex items-center gap-1 mt-0.5">
-                                <button
-                                  onClick={() => setQty(sec.id, origIdx, qty - 1)}
-                                  disabled={qty <= 0}
-                                  className="h-5 w-5 rounded-md flex items-center justify-center text-xs font-bold border border-border/40 hover:bg-accent/60 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                                >
-                                  −
-                                </button>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={qty === 0 ? "" : qty}
-                                  placeholder="0"
-                                  onChange={(e) => {
-                                    const v = parseInt(e.target.value, 10);
-                                    setQty(sec.id, origIdx, isNaN(v) ? 0 : v);
-                                  }}
-                                  className={cn(
-                                    "w-8 text-center text-xs font-bold tabular-nums bg-transparent focus:outline-none border-b",
-                                    qty > 0
-                                      ? "border-primary text-primary"
-                                      : "border-border/40 text-muted-foreground"
-                                  )}
-                                />
-                                <button
-                                  onClick={() => setQty(sec.id, origIdx, qty + 1)}
-                                  className="h-5 w-5 rounded-md flex items-center justify-center text-xs font-bold border border-border/40 hover:bg-accent/60 transition-colors"
-                                >
-                                  +
-                                </button>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
-
-        {filteredSections.length === 0 && (
-          <div className="flex flex-col items-center gap-3 py-20 text-muted-foreground">
-            <Package className="h-10 w-10 opacity-30" />
-            <p className="text-sm">No products match your search</p>
-            <button onClick={() => { setSearch(""); setActiveSection(null); }} className="text-xs text-primary underline">
-              Clear filters
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ── Sticky grand total bar ── */}
+      {/* ── Sticky floating total bar ── */}
       <AnimatePresence>
         {grandTotal > 0 && (
           <motion.div
