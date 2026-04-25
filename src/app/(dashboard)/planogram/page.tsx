@@ -6,8 +6,8 @@ import { LayoutGrid, Box, ArrowRight } from "lucide-react";
 
 const planogramTypes = [
   { name: "4 Sided Floor Stand",           href: "/planogram/4-sided-floor-stand",               sides: 4, total: 768, color: "from-violet-500 to-purple-600", ready: true },
-  { name: "4 Sided Stand Neck Brac Key Bag", href: "/planogram/4-sided-stand-neck-brac-key-bag", sides: 4, total: 768, color: "from-rose-500 to-pink-600",     ready: true },
-  { name: "Type 3", href: "#", sides: 0, total: 0, color: "from-emerald-500 to-teal-500",   ready: false },
+  { name: "4 Sided Stand Neck Brac Key Bag", href: "/planogram/4-sided-stand-neck-brac-key-bag",   sides: 4,   total: 768, color: "from-rose-500 to-pink-600",     ready: true },
+  { name: "All Designs Large Keyrings",      href: "/planogram/all-designs-large-keyrings",        sides: 0,   total: 268, color: "from-emerald-500 to-teal-600", ready: true },
   { name: "Type 4", href: "#", sides: 0, total: 0, color: "from-amber-500 to-orange-500",   ready: false },
   { name: "Type 5", href: "#", sides: 0, total: 0, color: "from-blue-500 to-cyan-500",      ready: false },
   { name: "Type 6", href: "#", sides: 0, total: 0, color: "from-indigo-500 to-blue-500",    ready: false },
@@ -28,7 +28,7 @@ export default function PlanogramPage() {
           Planograms
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          8 planogram types — 2 ready, select one to view or manage
+          8 planogram types — 3 ready, select one to view or manage
         </p>
       </motion.div>
 
