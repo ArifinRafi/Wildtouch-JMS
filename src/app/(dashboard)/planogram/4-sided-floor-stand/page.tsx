@@ -297,12 +297,24 @@ export default function FourSidedFloorStandPage() {
                               >
                                 <Minus className="h-3 w-3" />
                               </button>
-                              <span className={cn(
-                                "w-7 text-center text-sm font-bold tabular-nums",
-                                qty >= 6 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
-                              )}>
-                                {qty}
-                              </span>
+                              <input
+                                type="number"
+                                min={1}
+                                value={qty}
+                                onChange={(e) => {
+                                  const v = parseInt(e.target.value, 10);
+                                  if (!isNaN(v) && v >= 1) setSlotValue(activeIdx, ri, si, v);
+                                }}
+                                onBlur={(e) => {
+                                  const v = parseInt(e.target.value, 10);
+                                  setSlotValue(activeIdx, ri, si, isNaN(v) || v < 1 ? 1 : v);
+                                }}
+                                className={cn(
+                                  "w-8 text-center text-sm font-bold tabular-nums bg-transparent border-none outline-none focus:outline-none",
+                                  "[appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden",
+                                  qty >= 6 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
+                                )}
+                              />
                               <button
                                 onClick={() => increment(activeIdx, ri, si)}
                                 className="flex h-7 w-7 items-center justify-center rounded-lg hover:bg-accent/60 transition-colors"

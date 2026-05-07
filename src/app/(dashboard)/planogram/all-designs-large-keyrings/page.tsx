@@ -337,14 +337,26 @@ export default function AllDesignsLargeKeyringsPage() {
                                       >
                                         <Minus className="h-2.5 w-2.5" />
                                       </button>
-                                      <span className={cn(
-                                        "w-6 text-center text-[11px] font-bold tabular-nums",
-                                        v > 0
-                                          ? "text-emerald-600 dark:text-emerald-400"
-                                          : "text-muted-foreground/40"
-                                      )}>
-                                        {v || 0}
-                                      </span>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={v}
+                                        onChange={(e) => {
+                                          const n = parseInt(e.target.value, 10);
+                                          if (!isNaN(n) && n >= 0) setVal(activeIdx, ri, ci, n);
+                                        }}
+                                        onBlur={(e) => {
+                                          const n = parseInt(e.target.value, 10);
+                                          setVal(activeIdx, ri, ci, isNaN(n) || n < 0 ? 0 : n);
+                                        }}
+                                        className={cn(
+                                          "w-7 text-center text-[11px] font-bold tabular-nums bg-transparent border-none outline-none focus:outline-none",
+                                          "[appearance:textfield] [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden",
+                                          v > 0
+                                            ? "text-emerald-600 dark:text-emerald-400"
+                                            : "text-muted-foreground/40"
+                                        )}
+                                      />
                                       <button
                                         onClick={() => inc(ri, ci)}
                                         className="h-5 w-5 flex items-center justify-center rounded-md border border-border/40 hover:bg-accent/60 transition-colors"
