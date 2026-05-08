@@ -36,6 +36,13 @@ export const PRODUCT_PRICE_FIELDS: { key: keyof ClientPricing; label: string }[]
   { key: "christmasKeyrings",    label: "Christmas Keyrings" },
 ];
 
+/** A repeatable contact block — user can add as many as they want */
+export interface AdditionalContact {
+  name?: string;
+  contactNumber?: string;
+  address?: string;
+}
+
 export interface Client {
   // === Core fields (mandatory — backward compatible) ===
   id: string;
@@ -48,6 +55,16 @@ export interface Client {
   accountStatus: AccountStatus;
   lastOrder: string;
   totalOrders: number;
+
+  // === Branding / parent company (optional) ===
+  motherCompany?: string;
+
+  // === Additional contacts (optional, repeatable) ===
+  additionalContacts?: AdditionalContact[];
+
+  // === Media (optional, stored as data URLs) ===
+  brandCardImage?: string;
+  barcodeImage?: string;
 
   // === Contact (optional) ===
   mainBuyerNames?: string;

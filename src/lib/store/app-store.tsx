@@ -10,6 +10,7 @@ import {
 import { clients as seedClients, type Client } from "@/lib/mock-data/clients";
 export type { Client } from "@/lib/mock-data/clients";
 export type { ClientPricing } from "@/lib/mock-data/clients";
+export type { AdditionalContact } from "@/lib/mock-data/clients";
 
 // ─── Shared Types ──────────────────────────────────────────────────────────────
 export interface ProductionStaff {

@@ -1,22 +1,17 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   ArrowLeft,
-  Pencil,
-  Trash2,
   Phone,
-  Mail,
   MapPin,
   FileText,
   PackageCheck,
   PoundSterling,
   Store,
-  UserCheck,
-  Globe,
   Save,
   X,
   Plus,
@@ -24,12 +19,12 @@ import {
   Image as ImageIcon,
   ScanLine,
   Users as UsersIcon,
+  UserPlus,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -44,26 +39,6 @@ import {
   PRODUCT_PRICE_FIELDS,
   type AccountStatus,
 } from "@/lib/mock-data/clients";
-
-// ─── Status config ──────────────────────────────────────────────────────────
-const statusConfig: Record<AccountStatus, { label: string; className: string }> = {
-  active: {
-    label: "Active",
-    className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-  },
-  proforma: {
-    label: "Proforma",
-    className: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
-  },
-  on_hold: {
-    label: "On Hold",
-    className: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-  },
-  bad_credit: {
-    label: "Bad Credit",
-    className: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
-  },
-};
 
 // ─── Form types ─────────────────────────────────────────────────────────────
 interface ClientForm {
@@ -102,7 +77,44 @@ interface ClientForm {
   barcodeImage: string;
 }
 
-// File → data URL helper (used for Brand Card / Barcode uploads)
+function emptyForm(): ClientForm {
+  return {
+    name: "",
+    motherCompany: "",
+    mainBuyerNames: "",
+    otherContactAndPosition: "",
+    contactNumber: "",
+    mobOther: "",
+    email: "",
+    emailOther: "",
+    shopManagerName: "",
+    giftShopContactNo: "",
+    webAddress: "",
+    history: "good",
+    accountStatus: "active",
+    address: "",
+    city: "",
+    invoiceAddressFull: "",
+    deliveryAddress: "",
+    deliveryInstructions: "",
+    invoiceProcedure: "",
+    requirePO: false,
+    emailInvoiceTo: "",
+    topSellingAnimals: "",
+    slowSellerDesigns: "",
+    substituteDesigns: false,
+    standsInfo: "",
+    upsellInfo: "",
+    cardsUsed: "",
+    boxesUsed: "",
+    specialInformation: "",
+    pricing: {},
+    additionalContacts: [],
+    brandCardImage: "",
+    barcodeImage: "",
+  };
+}
+
 function readFileAsDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -112,78 +124,13 @@ function readFileAsDataURL(file: File): Promise<string> {
   });
 }
 
-function clientToForm(c: Client): ClientForm {
-  const pricing: Record<string, string> = {};
-  if (c.pricing) {
-    for (const f of PRODUCT_PRICE_FIELDS) {
-      const v = c.pricing[f.key];
-      if (v !== undefined) pricing[f.key] = String(v);
-    }
-  }
-  return {
-    name: c.name,
-    motherCompany: c.motherCompany ?? "",
-    mainBuyerNames: c.mainBuyerNames ?? "",
-    otherContactAndPosition: c.otherContactAndPosition ?? "",
-    contactNumber: c.contactNumber,
-    mobOther: c.mobOther ?? "",
-    email: c.email,
-    emailOther: c.emailOther ?? "",
-    shopManagerName: c.shopManagerName ?? "",
-    giftShopContactNo: c.giftShopContactNo ?? "",
-    webAddress: c.webAddress ?? "",
-    history: c.history,
-    accountStatus: c.accountStatus,
-    address: c.address,
-    city: c.city,
-    invoiceAddressFull: c.invoiceAddressFull ?? "",
-    deliveryAddress: c.deliveryAddress ?? "",
-    deliveryInstructions: c.deliveryInstructions ?? "",
-    invoiceProcedure: c.invoiceProcedure ?? "",
-    requirePO: c.requirePO ?? false,
-    emailInvoiceTo: c.emailInvoiceTo ?? "",
-    topSellingAnimals: c.topSellingAnimals ?? "",
-    slowSellerDesigns: c.slowSellerDesigns ?? "",
-    substituteDesigns: c.substituteDesigns ?? false,
-    standsInfo: c.standsInfo ?? "",
-    upsellInfo: c.upsellInfo ?? "",
-    cardsUsed: c.cardsUsed ?? "",
-    boxesUsed: c.boxesUsed ?? "",
-    specialInformation: c.specialInformation ?? "",
-    pricing,
-    additionalContacts: c.additionalContacts ?? [],
-    brandCardImage: c.brandCardImage ?? "",
-    barcodeImage: c.barcodeImage ?? "",
-  };
-}
-
 // ─── Page ───────────────────────────────────────────────────────────────────
-export default function ClientDetailPage() {
-  const params = useParams();
+export default function NewClientPage() {
   const router = useRouter();
-  const id = params.id as string;
-
   const store = useAppStore();
-  const client = store.clients.find((c) => c.id === id);
 
-  const [mode, setMode] = useState<"view" | "edit">("view");
-  const [form, setForm] = useState<ClientForm>(() =>
-    client ? clientToForm(client) : ({} as ClientForm),
-  );
+  const [form, setForm] = useState<ClientForm>(emptyForm());
   const [formError, setFormError] = useState("");
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
-  // Re-derive form when switching to edit mode
-  const startEdit = useCallback(() => {
-    if (client) setForm(clientToForm(client));
-    setFormError("");
-    setMode("edit");
-  }, [client]);
-
-  const cancelEdit = useCallback(() => {
-    setFormError("");
-    setMode("view");
-  }, []);
 
   const setField = useCallback(
     (key: keyof ClientForm, value: string | boolean) => {
@@ -266,7 +213,7 @@ export default function ClientDetailPage() {
       }))
       .filter((c) => c.name || c.contactNumber || c.address);
 
-    const data: Partial<Omit<Client, "id">> = {
+    const data: Omit<Client, "id"> = {
       name: form.name.trim(),
       address: form.address.trim(),
       city: form.city.trim(),
@@ -274,353 +221,52 @@ export default function ClientDetailPage() {
       email: form.email.trim(),
       history: (form.history as "good" | "bad") || "good",
       accountStatus: (form.accountStatus as AccountStatus) || "active",
-      motherCompany: form.motherCompany.trim() || undefined,
-      additionalContacts:
-        cleanedAdditionalContacts.length > 0 ? cleanedAdditionalContacts : undefined,
-      brandCardImage: form.brandCardImage || undefined,
-      barcodeImage: form.barcodeImage || undefined,
-      mainBuyerNames: form.mainBuyerNames.trim() || undefined,
-      otherContactAndPosition: form.otherContactAndPosition.trim() || undefined,
-      mobOther: form.mobOther.trim() || undefined,
-      emailOther: form.emailOther.trim() || undefined,
-      shopManagerName: form.shopManagerName.trim() || undefined,
-      giftShopContactNo: form.giftShopContactNo.trim() || undefined,
-      webAddress: form.webAddress.trim() || undefined,
-      invoiceAddressFull: form.invoiceAddressFull.trim() || undefined,
-      deliveryAddress: form.deliveryAddress.trim() || undefined,
-      deliveryInstructions: form.deliveryInstructions.trim() || undefined,
-      invoiceProcedure: form.invoiceProcedure.trim() || undefined,
+      lastOrder: "0 days ago",
+      totalOrders: 0,
+      ...(form.motherCompany.trim() && { motherCompany: form.motherCompany.trim() }),
+      ...(cleanedAdditionalContacts.length > 0 && {
+        additionalContacts: cleanedAdditionalContacts,
+      }),
+      ...(form.brandCardImage && { brandCardImage: form.brandCardImage }),
+      ...(form.barcodeImage && { barcodeImage: form.barcodeImage }),
+      ...(form.mainBuyerNames.trim() && { mainBuyerNames: form.mainBuyerNames.trim() }),
+      ...(form.otherContactAndPosition.trim() && {
+        otherContactAndPosition: form.otherContactAndPosition.trim(),
+      }),
+      ...(form.mobOther.trim() && { mobOther: form.mobOther.trim() }),
+      ...(form.emailOther.trim() && { emailOther: form.emailOther.trim() }),
+      ...(form.shopManagerName.trim() && { shopManagerName: form.shopManagerName.trim() }),
+      ...(form.giftShopContactNo.trim() && { giftShopContactNo: form.giftShopContactNo.trim() }),
+      ...(form.webAddress.trim() && { webAddress: form.webAddress.trim() }),
+      ...(form.invoiceAddressFull.trim() && {
+        invoiceAddressFull: form.invoiceAddressFull.trim(),
+      }),
+      ...(form.deliveryAddress.trim() && { deliveryAddress: form.deliveryAddress.trim() }),
+      ...(form.deliveryInstructions.trim() && {
+        deliveryInstructions: form.deliveryInstructions.trim(),
+      }),
+      ...(form.invoiceProcedure.trim() && { invoiceProcedure: form.invoiceProcedure.trim() }),
       requirePO: form.requirePO,
-      emailInvoiceTo: form.emailInvoiceTo.trim() || undefined,
-      topSellingAnimals: form.topSellingAnimals.trim() || undefined,
-      slowSellerDesigns: form.slowSellerDesigns.trim() || undefined,
+      ...(form.emailInvoiceTo.trim() && { emailInvoiceTo: form.emailInvoiceTo.trim() }),
+      ...(form.topSellingAnimals.trim() && { topSellingAnimals: form.topSellingAnimals.trim() }),
+      ...(form.slowSellerDesigns.trim() && { slowSellerDesigns: form.slowSellerDesigns.trim() }),
       substituteDesigns: form.substituteDesigns,
-      standsInfo: form.standsInfo.trim() || undefined,
-      upsellInfo: form.upsellInfo.trim() || undefined,
-      cardsUsed: form.cardsUsed.trim() || undefined,
-      boxesUsed: form.boxesUsed.trim() || undefined,
-      pricing: hasPricing ? pricingObj : undefined,
-      specialInformation: form.specialInformation.trim() || undefined,
+      ...(form.standsInfo.trim() && { standsInfo: form.standsInfo.trim() }),
+      ...(form.upsellInfo.trim() && { upsellInfo: form.upsellInfo.trim() }),
+      ...(form.cardsUsed.trim() && { cardsUsed: form.cardsUsed.trim() }),
+      ...(form.boxesUsed.trim() && { boxesUsed: form.boxesUsed.trim() }),
+      ...(hasPricing && { pricing: pricingObj }),
+      ...(form.specialInformation.trim() && {
+        specialInformation: form.specialInformation.trim(),
+      }),
     };
 
-    store.updateClient(id, data);
-    setMode("view");
-  }, [form, id, store]);
-
-  // ── Delete ──
-  const handleDelete = useCallback(() => {
-    store.deleteClient(id);
+    store.addClient(data);
     router.push("/clients");
-  }, [id, store, router]);
+  }, [form, store, router]);
 
-  // ── Input class ──
   const inputCls = "rounded-xl bg-muted/30 border-border/40";
 
-  // ── Not found ──
-  if (!client) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
-        <p className="text-lg font-semibold mb-2">Client not found</p>
-        <p className="text-sm mb-6">No client exists with ID &ldquo;{id}&rdquo;</p>
-        <Link
-          href="/clients"
-          className="flex items-center gap-2 text-sm font-medium text-primary hover:underline"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Clients
-        </Link>
-      </div>
-    );
-  }
-
-  const st = statusConfig[client.accountStatus];
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // VIEW MODE
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (mode === "view") {
-    const hasPricing =
-      client.pricing && PRODUCT_PRICE_FIELDS.some((f) => client.pricing?.[f.key] != null);
-
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="space-y-6 pb-24"
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="flex items-start gap-4">
-            <Link
-              href="/clients"
-              className="mt-1.5 flex h-9 w-9 items-center justify-center rounded-xl border border-border/40 bg-card/70 hover:bg-accent/40 transition-colors"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground/90 to-foreground/60 bg-clip-text text-transparent">
-                {client.name}
-              </h1>
-              <div className="flex items-center gap-2 mt-1.5">
-                <span className="text-xs text-muted-foreground">{client.id}</span>
-                <Badge variant="outline" className={cn("text-xs border", st.className)}>
-                  {st.label}
-                </Badge>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-xs border",
-                    client.history === "good"
-                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                      : "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
-                  )}
-                >
-                  {client.history === "good" ? "Good History" : "Bad History"}
-                </Badge>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Sections ── */}
-        <div className="space-y-6">
-          {/* Contact Details */}
-          <ViewSection title="Contact Details" icon={<Phone className="h-4 w-4" />}>
-            <ViewGrid>
-              <ViewField label="Client Name" value={client.name} />
-              <ViewField label="Mother Company" value={client.motherCompany} />
-              <ViewField label="Main Buyer" value={client.mainBuyerNames} />
-              <ViewField label="Other Contact" value={client.otherContactAndPosition} />
-              <ViewField label="Mob" value={client.contactNumber} />
-              <ViewField label="Mob Other" value={client.mobOther} />
-              <ViewField label="Email" value={client.email} />
-              <ViewField label="Email Other" value={client.emailOther} />
-              <ViewField label="Shop Manager" value={client.shopManagerName} />
-              <ViewField label="Gift Shop Contact" value={client.giftShopContactNo} />
-              <ViewField label="Web Address" value={client.webAddress} />
-            </ViewGrid>
-          </ViewSection>
-
-          {/* Addresses */}
-          {(client.address || client.city || client.invoiceAddressFull || client.deliveryAddress || client.deliveryInstructions) && (
-            <ViewSection title="Addresses" icon={<MapPin className="h-4 w-4" />}>
-              <ViewGrid>
-                <ViewField
-                  label="Invoice Address"
-                  value={[client.address, client.city].filter(Boolean).join(", ") || undefined}
-                />
-                <ViewField label="Full Invoice Address" value={client.invoiceAddressFull} />
-                <ViewField label="Delivery Address" value={client.deliveryAddress} />
-                <ViewField label="Delivery Instructions" value={client.deliveryInstructions} />
-              </ViewGrid>
-            </ViewSection>
-          )}
-
-          {/* Invoicing */}
-          {(client.invoiceProcedure || client.requirePO !== undefined || client.emailInvoiceTo) && (
-            <ViewSection title="Invoicing" icon={<FileText className="h-4 w-4" />}>
-              <ViewGrid>
-                <ViewField label="Invoice Procedure" value={client.invoiceProcedure} />
-                <ViewField label="Require PO" value={client.requirePO ? "Yes" : "No"} />
-                <ViewField label="Email Invoice To" value={client.emailInvoiceTo} />
-              </ViewGrid>
-            </ViewSection>
-          )}
-
-          {/* Product Preferences */}
-          {(client.topSellingAnimals || client.slowSellerDesigns || client.substituteDesigns !== undefined || client.standsInfo || client.upsellInfo || client.cardsUsed || client.boxesUsed) && (
-            <ViewSection title="Product Preferences" icon={<PackageCheck className="h-4 w-4" />}>
-              <ViewGrid>
-                <ViewField label="Top Selling Animals" value={client.topSellingAnimals} />
-                <ViewField label="Slow Seller Designs" value={client.slowSellerDesigns} />
-                <ViewField
-                  label="Substitute Designs"
-                  value={client.substituteDesigns !== undefined ? (client.substituteDesigns ? "Yes" : "No") : undefined}
-                />
-                <ViewField label="Stands Info" value={client.standsInfo} />
-                <ViewField label="Upsell Info" value={client.upsellInfo} />
-                <ViewField label="Cards Used" value={client.cardsUsed} />
-                <ViewField label="Boxes Used" value={client.boxesUsed} />
-              </ViewGrid>
-            </ViewSection>
-          )}
-
-          {/* Pricing */}
-          {hasPricing && (
-            <ViewSection title="Pricing" icon={<PoundSterling className="h-4 w-4" />}>
-              <div className="grid grid-cols-3 gap-x-6 gap-y-2">
-                {PRODUCT_PRICE_FIELDS.map((f) => {
-                  const v = client.pricing?.[f.key];
-                  if (v == null) return null;
-                  return (
-                    <div key={f.key} className="flex justify-between text-sm py-1">
-                      <span className="text-muted-foreground">{f.label}</span>
-                      <span className="font-medium">{"\u00A3"}{v.toFixed(2)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </ViewSection>
-          )}
-
-          {/* Additional Information */}
-          {client.additionalContacts && client.additionalContacts.length > 0 && (
-            <ViewSection
-              title="Additional Information"
-              icon={<UsersIcon className="h-4 w-4" />}
-            >
-              <div className="space-y-3">
-                {client.additionalContacts.map((c, idx) => (
-                  <div
-                    key={idx}
-                    className="rounded-xl border border-border/30 bg-muted/10 p-3 text-sm"
-                  >
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
-                      Entry {idx + 1}
-                    </div>
-                    <ViewGrid>
-                      <ViewField label="Other Name" value={c.name} />
-                      <ViewField label="Other Contact Number" value={c.contactNumber} />
-                    </ViewGrid>
-                    {c.address && (
-                      <div className="mt-1">
-                        <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-                          Other Address
-                        </span>
-                        <p className="text-sm font-medium mt-0.5 whitespace-pre-wrap">
-                          {c.address}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </ViewSection>
-          )}
-
-          {/* Brand Card / Barcode */}
-          {(client.brandCardImage || client.barcodeImage) && (
-            <ViewSection
-              title="Media"
-              icon={<ImageIcon className="h-4 w-4" />}
-            >
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {client.brandCardImage && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-                        Brand Card
-                      </span>
-                    </div>
-                    <div className="relative h-40 w-full overflow-hidden rounded-lg border border-border/30 bg-background flex items-center justify-center">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={client.brandCardImage}
-                        alt="Brand Card"
-                        className="max-h-full max-w-full object-contain"
-                      />
-                    </div>
-                  </div>
-                )}
-                {client.barcodeImage && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <ScanLine className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-                        Barcode
-                      </span>
-                    </div>
-                    <div className="relative h-40 w-full overflow-hidden rounded-lg border border-border/30 bg-background flex items-center justify-center">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={client.barcodeImage}
-                        alt="Barcode"
-                        className="max-h-full max-w-full object-contain"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </ViewSection>
-          )}
-
-          {/* Special Information */}
-          {client.specialInformation && (
-            <ViewSection title="Special Information" icon={<Store className="h-4 w-4" />}>
-              <p className="text-sm whitespace-pre-wrap">{client.specialInformation}</p>
-            </ViewSection>
-          )}
-
-          {/* Account */}
-          <ViewSection title="Account" icon={<UserCheck className="h-4 w-4" />}>
-            <ViewGrid>
-              <ViewField label="Last Order" value={client.lastOrder} />
-              <ViewField label="Total Orders" value={String(client.totalOrders)} />
-            </ViewGrid>
-          </ViewSection>
-        </div>
-
-        {/* Footer actions */}
-        <div className="flex items-center gap-3 pt-2">
-          <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-            <Button
-              onClick={startEdit}
-              className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 hover:from-primary/90 hover:to-indigo-500/90 shadow-lg shadow-primary/20 text-white font-semibold"
-            >
-              <Pencil className="h-4 w-4" />
-              Edit
-            </Button>
-          </motion.div>
-
-          {!showDeleteConfirm ? (
-            <Button
-              variant="outline"
-              className="gap-2 rounded-xl border-destructive/40 text-destructive hover:bg-destructive/10"
-              onClick={() => setShowDeleteConfirm(true)}
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </Button>
-          ) : (
-            <AnimatePresence>
-              <motion.div
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -8 }}
-                className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-2"
-              >
-                <p className="text-sm text-destructive font-medium">
-                  Are you sure? This cannot be undone.
-                </p>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  className="rounded-lg text-xs"
-                  onClick={handleDelete}
-                >
-                  Confirm Delete
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="rounded-lg text-xs"
-                  onClick={() => setShowDeleteConfirm(false)}
-                >
-                  Cancel
-                </Button>
-              </motion.div>
-            </AnimatePresence>
-          )}
-        </div>
-      </motion.div>
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // EDIT MODE
-  // ═══════════════════════════════════════════════════════════════════════════
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -630,17 +276,20 @@ export default function ClientDetailPage() {
     >
       {/* Header */}
       <div className="flex items-start gap-4">
-        <button
-          onClick={cancelEdit}
+        <Link
+          href="/clients"
           className="mt-1.5 flex h-9 w-9 items-center justify-center rounded-xl border border-border/40 bg-card/70 hover:bg-accent/40 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-        </button>
+        </Link>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground/90 to-foreground/60 bg-clip-text text-transparent">
-            Edit Client
+          <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground/90 to-foreground/60 bg-clip-text text-transparent flex items-center gap-3">
+            <UserPlus className="h-7 w-7 text-primary" />
+            Add Client
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">{client.name} &mdash; {client.id}</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Create a new client record. Only Name, Mobile, and Email are required.
+          </p>
         </div>
       </div>
 
@@ -655,7 +304,7 @@ export default function ClientDetailPage() {
       )}
 
       {/* ── Section 1: Contact Info ── */}
-      <EditSection title="Contact Info" icon={<Phone className="h-4 w-4" />}>
+      <Section title="Contact Info" icon={<Phone className="h-4 w-4" />}>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -828,10 +477,10 @@ export default function ClientDetailPage() {
             )}
           </div>
         </div>
-      </EditSection>
+      </Section>
 
       {/* ── Section 2: Addresses ── */}
-      <EditSection title="Addresses" icon={<MapPin className="h-4 w-4" />}>
+      <Section title="Addresses" icon={<MapPin className="h-4 w-4" />}>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -856,10 +505,10 @@ export default function ClientDetailPage() {
             <Textarea className={inputCls} rows={3} value={form.deliveryInstructions} onChange={(e) => setField("deliveryInstructions", e.target.value)} />
           </div>
         </div>
-      </EditSection>
+      </Section>
 
       {/* ── Section 3: Invoicing ── */}
-      <EditSection title="Invoicing" icon={<FileText className="h-4 w-4" />}>
+      <Section title="Invoicing" icon={<FileText className="h-4 w-4" />}>
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label>Invoice Procedure</Label>
@@ -867,23 +516,23 @@ export default function ClientDetailPage() {
           </div>
           <div className="flex items-center gap-2">
             <input
-              id="edit-requirePO"
+              id="new-requirePO"
               type="checkbox"
               checked={form.requirePO}
               onChange={(e) => setField("requirePO", e.target.checked)}
               className="h-4 w-4 rounded border-border/40"
             />
-            <Label htmlFor="edit-requirePO">Require PO</Label>
+            <Label htmlFor="new-requirePO">Require PO</Label>
           </div>
           <div className="space-y-1.5">
             <Label>Email Invoice To</Label>
             <Input className={inputCls} value={form.emailInvoiceTo} onChange={(e) => setField("emailInvoiceTo", e.target.value)} />
           </div>
         </div>
-      </EditSection>
+      </Section>
 
       {/* ── Section 4: Product Intelligence ── */}
-      <EditSection title="Product Intelligence" icon={<PackageCheck className="h-4 w-4" />}>
+      <Section title="Product Intelligence" icon={<PackageCheck className="h-4 w-4" />}>
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label>Top Selling Animals</Label>
@@ -895,13 +544,13 @@ export default function ClientDetailPage() {
           </div>
           <div className="flex items-center gap-2">
             <input
-              id="edit-substituteDesigns"
+              id="new-substituteDesigns"
               type="checkbox"
               checked={form.substituteDesigns}
               onChange={(e) => setField("substituteDesigns", e.target.checked)}
               className="h-4 w-4 rounded border-border/40"
             />
-            <Label htmlFor="edit-substituteDesigns">Substitute Designs</Label>
+            <Label htmlFor="new-substituteDesigns">Substitute Designs</Label>
           </div>
           <div className="space-y-1.5">
             <Label>Stands Info</Label>
@@ -922,10 +571,10 @@ export default function ClientDetailPage() {
             </div>
           </div>
         </div>
-      </EditSection>
+      </Section>
 
       {/* ── Section 5: Pricing ── */}
-      <EditSection title="Pricing" icon={<PoundSterling className="h-4 w-4" />}>
+      <Section title="Pricing" icon={<PoundSterling className="h-4 w-4" />}>
         <div className="grid grid-cols-2 gap-4">
           {PRODUCT_PRICE_FIELDS.map((f) => (
             <div key={f.key} className="space-y-1.5">
@@ -946,10 +595,10 @@ export default function ClientDetailPage() {
             </div>
           ))}
         </div>
-      </EditSection>
+      </Section>
 
-      {/* ── Section 7: Media (Brand Card + Barcode) ── */}
-      <EditSection title="Brand Card &amp; Barcode" icon={<ImageIcon className="h-4 w-4" />}>
+      {/* ── Section 6: Brand Card + Barcode ── */}
+      <Section title="Brand Card &amp; Barcode" icon={<ImageIcon className="h-4 w-4" />}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <ImageUploadCard
             label="Brand Card"
@@ -966,10 +615,10 @@ export default function ClientDetailPage() {
             onClear={() => clearImage("barcodeImage")}
           />
         </div>
-      </EditSection>
+      </Section>
 
-      {/* ── Section 8: Special Information ── */}
-      <EditSection title="Special Information" icon={<Store className="h-4 w-4" />}>
+      {/* ── Section 7: Special Information ── */}
+      <Section title="Special Information" icon={<Store className="h-4 w-4" />}>
         <div className="space-y-1.5">
           <Textarea
             className={inputCls}
@@ -978,9 +627,9 @@ export default function ClientDetailPage() {
             onChange={(e) => setField("specialInformation", e.target.value)}
           />
         </div>
-      </EditSection>
+      </Section>
 
-      {/* Footer */}
+      {/* Footer actions */}
       <div className="flex items-center gap-3 pt-2">
         <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
           <Button
@@ -988,45 +637,22 @@ export default function ClientDetailPage() {
             className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 hover:from-primary/90 hover:to-indigo-500/90 shadow-lg shadow-primary/20 text-white font-semibold"
           >
             <Save className="h-4 w-4" />
-            Save Changes
+            Create Client
           </Button>
         </motion.div>
-        <Button variant="outline" className="gap-2 rounded-xl border-border/40" onClick={cancelEdit}>
-          <X className="h-4 w-4" />
-          Cancel
-        </Button>
+        <Link href="/clients">
+          <Button variant="outline" className="gap-2 rounded-xl border-border/40">
+            <X className="h-4 w-4" />
+            Cancel
+          </Button>
+        </Link>
       </div>
     </motion.div>
   );
 }
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
-function ViewSection({
-  title,
-  icon,
-  children,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="rounded-2xl border border-border/40 bg-card/70 p-5"
-    >
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-muted-foreground">{icon}</span>
-        <h3 className="text-sm font-semibold">{title}</h3>
-      </div>
-      {children}
-    </motion.div>
-  );
-}
-
-function EditSection({
+function Section({
   title,
   icon,
   children,
@@ -1051,23 +677,6 @@ function EditSection({
   );
 }
 
-function ViewGrid({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-2 gap-x-6 gap-y-2">{children}</div>;
-}
-
-function ViewField({ label, value }: { label: string; value?: string | null }) {
-  if (!value) return null;
-  return (
-    <div className="py-1">
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-        {label}
-      </span>
-      <p className="text-sm font-medium mt-0.5">{value}</p>
-    </div>
-  );
-}
-
-// ─── Image upload card ──────────────────────────────────────────────────────
 function ImageUploadCard({
   label,
   icon,
@@ -1081,7 +690,7 @@ function ImageUploadCard({
   onUpload: (file: File | null) => void;
   onClear: () => void;
 }) {
-  const inputId = `edit-upload-${label.replace(/\s+/g, "-").toLowerCase()}`;
+  const inputId = `new-upload-${label.replace(/\s+/g, "-").toLowerCase()}`;
   return (
     <div className="rounded-xl border border-border/40 bg-muted/10 p-4 space-y-3">
       <div className="flex items-center justify-between">

@@ -17,16 +17,13 @@ import {
   Building2,
   Clock,
   SendHorizontal,
-  MoreHorizontal,
   ArrowUpDown,
   Eye,
   Trash2,
-  PoundSterling,
+  AlertTriangle,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -41,22 +38,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/lib/store/app-store";
-import type { Client, ClientPricing } from "@/lib/store/app-store";
-import {
-  type AccountStatus,
-  PRODUCT_PRICE_FIELDS,
-} from "@/lib/mock-data/clients";
+import type { Client } from "@/lib/store/app-store";
+import { type AccountStatus } from "@/lib/mock-data/clients";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function parseDaysAgo(str: string): number {
@@ -96,73 +81,6 @@ const filterOptions: { label: string; value: string }[] = [
   { label: "Bad History", value: "bad" },
 ];
 
-// ─── Form types ──────────────────────────────────────────────────────────────
-interface ClientForm {
-  name: string;
-  mainBuyerNames: string;
-  otherContactAndPosition: string;
-  contactNumber: string;
-  mobOther: string;
-  email: string;
-  emailOther: string;
-  shopManagerName: string;
-  giftShopContactNo: string;
-  webAddress: string;
-  history: string;
-  accountStatus: string;
-  address: string;
-  city: string;
-  invoiceAddressFull: string;
-  deliveryAddress: string;
-  deliveryInstructions: string;
-  invoiceProcedure: string;
-  requirePO: boolean;
-  emailInvoiceTo: string;
-  topSellingAnimals: string;
-  slowSellerDesigns: string;
-  substituteDesigns: boolean;
-  standsInfo: string;
-  upsellInfo: string;
-  cardsUsed: string;
-  boxesUsed: string;
-  specialInformation: string;
-  pricing: Record<string, string>;
-}
-
-function emptyForm(): ClientForm {
-  return {
-    name: "",
-    mainBuyerNames: "",
-    otherContactAndPosition: "",
-    contactNumber: "",
-    mobOther: "",
-    email: "",
-    emailOther: "",
-    shopManagerName: "",
-    giftShopContactNo: "",
-    webAddress: "",
-    history: "good",
-    accountStatus: "active",
-    address: "",
-    city: "",
-    invoiceAddressFull: "",
-    deliveryAddress: "",
-    deliveryInstructions: "",
-    invoiceProcedure: "",
-    requirePO: false,
-    emailInvoiceTo: "",
-    topSellingAnimals: "",
-    slowSellerDesigns: "",
-    substituteDesigns: false,
-    standsInfo: "",
-    upsellInfo: "",
-    cardsUsed: "",
-    boxesUsed: "",
-    specialInformation: "",
-    pricing: {},
-  };
-}
-
 // ─── Component ───────────────────────────────────────────────────────────────
 export default function ClientsPage() {
   const store = useAppStore();
@@ -173,12 +91,6 @@ export default function ClientsPage() {
   const [filter, setFilter] = useState("all");
   const [sortField, setSortField] = useState<keyof Client>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-
-  // ── Add dialog state ──
-  const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState<ClientForm>(emptyForm());
-  const [formError, setFormError] = useState("");
-  const [formTab, setFormTab] = useState("contact");
 
   // ── Filtered + sorted list ──
   const filtered = useMemo(() => {
@@ -231,101 +143,18 @@ export default function ClientsPage() {
     (c) => parseDaysAgo(c.lastOrder) > INACTIVE_THRESHOLD,
   ).length;
 
-  // ── Dialog openers ──
-  const openAdd = useCallback(() => {
-    setForm(emptyForm());
-    setFormError("");
-    setFormTab("contact");
-    setAddOpen(true);
+  // ── Delete confirmation ──
+  const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
+  const askRemove = useCallback((client: Client) => {
+    setClientToDelete(client);
   }, []);
-
-  // ── Save (Add) ──
-  const handleSave = useCallback(() => {
-    if (!form.name.trim() || !form.contactNumber.trim() || !form.email.trim()) {
-      setFormError("Name, Mobile, and Email are required.");
-      return;
+  const confirmRemove = useCallback(() => {
+    if (clientToDelete) {
+      store.deleteClient(clientToDelete.id);
+      setClientToDelete(null);
     }
-    setFormError("");
-
-    const pricingObj: ClientPricing = {};
-    for (const f of PRODUCT_PRICE_FIELDS) {
-      const raw = form.pricing[f.key];
-      if (raw && raw.trim()) {
-        const n = parseFloat(raw);
-        if (!isNaN(n)) (pricingObj as Record<string, number>)[f.key] = n;
-      }
-    }
-    const hasPricing = Object.keys(pricingObj).length > 0;
-
-    const data: Omit<Client, "id"> = {
-      name: form.name.trim(),
-      address: form.address.trim(),
-      city: form.city.trim(),
-      contactNumber: form.contactNumber.trim(),
-      email: form.email.trim(),
-      history: (form.history as "good" | "bad") || "good",
-      accountStatus: (form.accountStatus as AccountStatus) || "active",
-      lastOrder: "0 days ago",
-      totalOrders: 0,
-      ...(form.mainBuyerNames.trim() && { mainBuyerNames: form.mainBuyerNames.trim() }),
-      ...(form.otherContactAndPosition.trim() && {
-        otherContactAndPosition: form.otherContactAndPosition.trim(),
-      }),
-      ...(form.mobOther.trim() && { mobOther: form.mobOther.trim() }),
-      ...(form.emailOther.trim() && { emailOther: form.emailOther.trim() }),
-      ...(form.shopManagerName.trim() && { shopManagerName: form.shopManagerName.trim() }),
-      ...(form.giftShopContactNo.trim() && { giftShopContactNo: form.giftShopContactNo.trim() }),
-      ...(form.webAddress.trim() && { webAddress: form.webAddress.trim() }),
-      ...(form.invoiceAddressFull.trim() && {
-        invoiceAddressFull: form.invoiceAddressFull.trim(),
-      }),
-      ...(form.deliveryAddress.trim() && { deliveryAddress: form.deliveryAddress.trim() }),
-      ...(form.deliveryInstructions.trim() && {
-        deliveryInstructions: form.deliveryInstructions.trim(),
-      }),
-      ...(form.invoiceProcedure.trim() && { invoiceProcedure: form.invoiceProcedure.trim() }),
-      requirePO: form.requirePO,
-      ...(form.emailInvoiceTo.trim() && { emailInvoiceTo: form.emailInvoiceTo.trim() }),
-      ...(form.topSellingAnimals.trim() && { topSellingAnimals: form.topSellingAnimals.trim() }),
-      ...(form.slowSellerDesigns.trim() && { slowSellerDesigns: form.slowSellerDesigns.trim() }),
-      substituteDesigns: form.substituteDesigns,
-      ...(form.standsInfo.trim() && { standsInfo: form.standsInfo.trim() }),
-      ...(form.upsellInfo.trim() && { upsellInfo: form.upsellInfo.trim() }),
-      ...(form.cardsUsed.trim() && { cardsUsed: form.cardsUsed.trim() }),
-      ...(form.boxesUsed.trim() && { boxesUsed: form.boxesUsed.trim() }),
-      ...(hasPricing && { pricing: pricingObj }),
-      ...(form.specialInformation.trim() && {
-        specialInformation: form.specialInformation.trim(),
-      }),
-    };
-
-    store.addClient(data);
-    setAddOpen(false);
-  }, [form, store]);
-
-  // ── Remove ──
-  const handleRemove = useCallback(
-    (client: Client) => {
-      if (window.confirm(`Remove "${client.name}"? This action cannot be undone.`)) {
-        store.deleteClient(client.id);
-      }
-    },
-    [store],
-  );
-
-  // ── Form field updater ──
-  const setField = useCallback(
-    (key: keyof ClientForm, value: string | boolean) => {
-      setForm((prev) => ({ ...prev, [key]: value }));
-    },
-    [],
-  );
-  const setPricingField = useCallback((key: string, value: string) => {
-    setForm((prev) => ({ ...prev, pricing: { ...prev.pricing, [key]: value } }));
-  }, []);
-
-  // ── Render helpers ──
-  const inputCls = "rounded-xl bg-muted/30 border-border/40";
+  }, [clientToDelete, store]);
+  const cancelRemove = useCallback(() => setClientToDelete(null), []);
 
   return (
     <div className="space-y-6">
@@ -345,13 +174,14 @@ export default function ClientsPage() {
           </p>
         </div>
         <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-          <Button
-            onClick={openAdd}
-            className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 hover:from-primary/90 hover:to-indigo-500/90 shadow-lg shadow-primary/20 text-white font-semibold"
-          >
-            <Plus className="h-4 w-4" />
-            Add Client
-          </Button>
+          <Link href="/clients/new">
+            <Button
+              className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 hover:from-primary/90 hover:to-indigo-500/90 shadow-lg shadow-primary/20 text-white font-semibold"
+            >
+              <Plus className="h-4 w-4" />
+              Add Client
+            </Button>
+          </Link>
         </motion.div>
       </motion.div>
 
@@ -489,7 +319,7 @@ export default function ClientsPage() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
           <Input
             placeholder="Search by name, city, email, phone..."
-            className={cn("pl-9", inputCls)}
+            className="pl-9 rounded-xl bg-muted/30 border-border/40"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -554,7 +384,7 @@ export default function ClientsPage() {
                     </button>
                   </th>
                 ))}
-                <th className="w-[120px] px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <th className="w-[160px] px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Actions
                 </th>
               </tr>
@@ -638,49 +468,45 @@ export default function ClientsPage() {
 
                         {/* Actions */}
                         <td className="px-3 py-3.5 align-middle">
-                          <div className="flex items-center gap-1">
-                            {/* Chase Up */}
-                            <motion.a
-                              whileHover={{ scale: 1.12 }}
-                              whileTap={{ scale: 0.9 }}
-                              href={`mailto:${client.email}?subject=${encodeURIComponent(`Checking In — ${client.name}`)}&body=${encodeURIComponent(`Hi there,\n\nWe noticed we haven't heard from you in a while and wanted to check in.\n\nIs everything okay with your account? We'd love to hear from you and see if there's anything we can help with.\n\nPlease feel free to reply to this email or give us a call.\n\nBest regards,\nWildtouch Team`)}`}
-                              title="Chase Up"
-                              className={cn(
-                                "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
-                                isInactive
-                                  ? "bg-amber-500/15 text-amber-500 hover:bg-amber-500/30"
-                                  : "opacity-0 group-hover:opacity-100 hover:bg-accent/60 text-muted-foreground hover:text-foreground",
-                              )}
-                            >
-                              <SendHorizontal className="h-3.5 w-3.5" />
-                            </motion.a>
-
-                            {/* View Details — Link to detail page */}
-                            <Link
-                              href={`/clients/${client.id}`}
-                              className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-8 w-8 rounded-lg hover:bg-accent/60 transition-all text-muted-foreground hover:text-foreground"
-                              title="View Details"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                            </Link>
-
-                            {/* More menu */}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-8 w-8 rounded-lg hover:bg-accent/60 transition-all focus-visible:outline-none focus-visible:opacity-100">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent
-                                align="end"
-                                className="w-44 glass-strong bg-popover/95 border-border/40 rounded-xl p-1"
+                          <div className="flex items-center gap-1.5">
+                            {/* Chase Up — only when inactive */}
+                            {isInactive && (
+                              <motion.a
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                href={`mailto:${client.email}?subject=${encodeURIComponent(`Checking In — ${client.name}`)}&body=${encodeURIComponent(`Hi there,\n\nWe noticed we haven't heard from you in a while and wanted to check in.\n\nIs everything okay with your account? We'd love to hear from you and see if there's anything we can help with.\n\nPlease feel free to reply to this email or give us a call.\n\nBest regards,\nWildtouch Team`)}`}
+                                title="Chase Up"
+                                className="flex items-center justify-center h-8 w-8 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition-colors"
                               >
-                                <DropdownMenuItem
-                                  onClick={() => handleRemove(client)}
-                                  className="rounded-lg cursor-pointer gap-2 text-sm text-destructive"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" /> Remove
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                                <SendHorizontal className="h-3.5 w-3.5" />
+                              </motion.a>
+                            )}
+
+                            {/* View Details — always visible, modern button */}
+                            <motion.div
+                              whileHover={{ scale: 1.04 }}
+                              whileTap={{ scale: 0.96 }}
+                            >
+                              <Link
+                                href={`/clients/${client.id}`}
+                                className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 transition-colors text-xs font-semibold"
+                                title="View Details"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                                <span>View</span>
+                              </Link>
+                            </motion.div>
+
+                            {/* Delete — always visible, modern destructive button */}
+                            <motion.button
+                              whileHover={{ scale: 1.04 }}
+                              whileTap={{ scale: 0.96 }}
+                              onClick={() => askRemove(client)}
+                              title="Delete"
+                              className="flex items-center justify-center h-8 w-8 rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/20 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </motion.button>
                           </div>
                         </td>
                       </motion.tr>
@@ -702,345 +528,52 @@ export default function ClientsPage() {
         )}
       </motion.div>
 
+
       {/* ════════════════════════════════════════════════════════════════════════
-          Dialog: Add Client
+          Dialog: Confirm Delete
          ════════════════════════════════════════════════════════════════════════ */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0 rounded-2xl">
-          <DialogHeader className="px-6 pt-6 pb-2">
-            <DialogTitle className="text-lg font-bold">Add Client</DialogTitle>
+      <Dialog open={!!clientToDelete} onOpenChange={(o) => !o && cancelRemove()}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10 text-destructive shrink-0">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold">Delete Client?</DialogTitle>
+                <p className="text-xs text-muted-foreground mt-1">
+                  This action cannot be undone.
+                </p>
+              </div>
+            </div>
           </DialogHeader>
 
-          <ScrollArea className="flex-1 px-6">
-            <Tabs value={formTab} onValueChange={setFormTab} className="w-full">
-              <TabsList className="w-full grid grid-cols-5 mb-4">
-                <TabsTrigger value="contact">Contact</TabsTrigger>
-                <TabsTrigger value="address">Address</TabsTrigger>
-                <TabsTrigger value="invoicing">Invoicing</TabsTrigger>
-                <TabsTrigger value="products">Products</TabsTrigger>
-                <TabsTrigger value="pricing">Pricing</TabsTrigger>
-              </TabsList>
-
-              {/* Tab 1: Contact */}
-              <TabsContent value="contact" className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label>Name *</Label>
-                  <Input
-                    className={inputCls}
-                    value={form.name}
-                    onChange={(e) => setField("name", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Main Buyer Names</Label>
-                  <Input
-                    className={inputCls}
-                    value={form.mainBuyerNames}
-                    onChange={(e) => setField("mainBuyerNames", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Other Contact & Position</Label>
-                  <Input
-                    className={inputCls}
-                    value={form.otherContactAndPosition}
-                    onChange={(e) => setField("otherContactAndPosition", e.target.value)}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label>Mobile *</Label>
-                    <Input
-                      className={inputCls}
-                      value={form.contactNumber}
-                      onChange={(e) => setField("contactNumber", e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Other Mobile</Label>
-                    <Input
-                      className={inputCls}
-                      value={form.mobOther}
-                      onChange={(e) => setField("mobOther", e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label>Email *</Label>
-                    <Input
-                      className={inputCls}
-                      value={form.email}
-                      onChange={(e) => setField("email", e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Other Email</Label>
-                    <Input
-                      className={inputCls}
-                      value={form.emailOther}
-                      onChange={(e) => setField("emailOther", e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label>Shop Manager Name</Label>
-                    <Input
-                      className={inputCls}
-                      value={form.shopManagerName}
-                      onChange={(e) => setField("shopManagerName", e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Gift Shop Contact No</Label>
-                    <Input
-                      className={inputCls}
-                      value={form.giftShopContactNo}
-                      onChange={(e) => setField("giftShopContactNo", e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Web Address</Label>
-                  <Input
-                    className={inputCls}
-                    value={form.webAddress}
-                    onChange={(e) => setField("webAddress", e.target.value)}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label>History</Label>
-                    <Select
-                      value={form.history}
-                      onValueChange={(v) => v && setField("history", v)}
-                    >
-                      <SelectTrigger className={inputCls}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="good">Good</SelectItem>
-                        <SelectItem value="bad">Bad</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Account Status</Label>
-                    <Select
-                      value={form.accountStatus}
-                      onValueChange={(v) => v && setField("accountStatus", v)}
-                    >
-                      <SelectTrigger className={inputCls}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="proforma">Proforma</SelectItem>
-                        <SelectItem value="on_hold">On Hold</SelectItem>
-                        <SelectItem value="bad_credit">Bad Credit</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </TabsContent>
-
-              {/* Tab 2: Address */}
-              <TabsContent value="address" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label>Invoice Address Line 1</Label>
-                    <Input
-                      className={inputCls}
-                      value={form.address}
-                      onChange={(e) => setField("address", e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>City</Label>
-                    <Input
-                      className={inputCls}
-                      value={form.city}
-                      onChange={(e) => setField("city", e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Full Invoice Address</Label>
-                  <Textarea
-                    className={inputCls}
-                    rows={3}
-                    value={form.invoiceAddressFull}
-                    onChange={(e) => setField("invoiceAddressFull", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Delivery Address</Label>
-                  <Textarea
-                    className={inputCls}
-                    rows={3}
-                    value={form.deliveryAddress}
-                    onChange={(e) => setField("deliveryAddress", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Delivery Instructions</Label>
-                  <Textarea
-                    className={inputCls}
-                    rows={3}
-                    value={form.deliveryInstructions}
-                    onChange={(e) => setField("deliveryInstructions", e.target.value)}
-                  />
-                </div>
-              </TabsContent>
-
-              {/* Tab 3: Invoicing */}
-              <TabsContent value="invoicing" className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label>Invoice Procedure</Label>
-                  <Input
-                    className={inputCls}
-                    value={form.invoiceProcedure}
-                    onChange={(e) => setField("invoiceProcedure", e.target.value)}
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="requirePO"
-                    type="checkbox"
-                    checked={form.requirePO}
-                    onChange={(e) => setField("requirePO", e.target.checked)}
-                    className="h-4 w-4 rounded border-border/40"
-                  />
-                  <Label htmlFor="requirePO">Require PO</Label>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Email Invoice To</Label>
-                  <Input
-                    className={inputCls}
-                    value={form.emailInvoiceTo}
-                    onChange={(e) => setField("emailInvoiceTo", e.target.value)}
-                  />
-                </div>
-              </TabsContent>
-
-              {/* Tab 4: Products */}
-              <TabsContent value="products" className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label>Top Selling Animals</Label>
-                  <Textarea
-                    className={inputCls}
-                    rows={3}
-                    value={form.topSellingAnimals}
-                    onChange={(e) => setField("topSellingAnimals", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Slow Seller Designs</Label>
-                  <Textarea
-                    className={inputCls}
-                    rows={3}
-                    value={form.slowSellerDesigns}
-                    onChange={(e) => setField("slowSellerDesigns", e.target.value)}
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="substituteDesigns"
-                    type="checkbox"
-                    checked={form.substituteDesigns}
-                    onChange={(e) => setField("substituteDesigns", e.target.checked)}
-                    className="h-4 w-4 rounded border-border/40"
-                  />
-                  <Label htmlFor="substituteDesigns">Substitute Designs</Label>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Stands Info</Label>
-                  <Textarea
-                    className={inputCls}
-                    rows={2}
-                    value={form.standsInfo}
-                    onChange={(e) => setField("standsInfo", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Upsell Info</Label>
-                  <Input
-                    className={inputCls}
-                    value={form.upsellInfo}
-                    onChange={(e) => setField("upsellInfo", e.target.value)}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label>Cards Used</Label>
-                    <Input
-                      className={inputCls}
-                      value={form.cardsUsed}
-                      onChange={(e) => setField("cardsUsed", e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Boxes Used</Label>
-                    <Input
-                      className={inputCls}
-                      value={form.boxesUsed}
-                      onChange={(e) => setField("boxesUsed", e.target.value)}
-                    />
-                  </div>
-                </div>
-              </TabsContent>
-
-              {/* Tab 5: Pricing */}
-              <TabsContent value="pricing" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  {PRODUCT_PRICE_FIELDS.map((f) => (
-                    <div key={f.key} className="space-y-1.5">
-                      <Label>{f.label}</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                          <PoundSterling className="h-3.5 w-3.5" />
-                        </span>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          className={cn("pl-8", inputCls)}
-                          value={form.pricing[f.key] ?? ""}
-                          onChange={(e) => setPricingField(f.key, e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </TabsContent>
-            </Tabs>
-
-            {/* Special Information — always visible below tabs */}
-            <div className="space-y-1.5 mt-4 pb-4">
-              <Label>Special Information</Label>
-              <Textarea
-                className={inputCls}
-                rows={3}
-                value={form.specialInformation}
-                onChange={(e) => setField("specialInformation", e.target.value)}
-              />
+          {clientToDelete && (
+            <div className="rounded-xl border border-border/40 bg-muted/20 px-4 py-3">
+              <p className="text-sm font-semibold">{clientToDelete.name}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10px] text-muted-foreground">{clientToDelete.id}</span>
+                <span className="text-[10px] text-muted-foreground">&middot;</span>
+                <span className="text-[10px] text-muted-foreground">{clientToDelete.email}</span>
+              </div>
             </div>
-          </ScrollArea>
-
-          {formError && (
-            <p className="text-sm text-destructive px-6 pb-1">{formError}</p>
           )}
 
-          <DialogFooter className="px-6 py-4 border-t border-border/20">
-            <Button variant="ghost" className="rounded-xl" onClick={() => setAddOpen(false)}>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="ghost"
+              className="rounded-xl"
+              onClick={cancelRemove}
+            >
               Cancel
             </Button>
             <Button
-              onClick={handleSave}
-              className="rounded-xl bg-gradient-to-r from-primary to-indigo-500 hover:from-primary/90 hover:to-indigo-500/90 text-white font-semibold"
+              variant="destructive"
+              className="rounded-xl gap-1.5 shadow-md shadow-destructive/20"
+              onClick={confirmRemove}
             >
-              Add Client
+              <Trash2 className="h-4 w-4" />
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1048,3 +581,4 @@ export default function ClientsPage() {
     </div>
   );
 }
+
