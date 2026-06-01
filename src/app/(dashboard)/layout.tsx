@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { AppStoreProvider } from "@/lib/store/app-store";
+import { InventoryProvider } from "@/lib/store/inventory-store";
 
 export default function DashboardLayout({
   children,
@@ -8,7 +9,9 @@ export default function DashboardLayout({
 }) {
   return (
     <AppStoreProvider>
-      <AppShell>{children}</AppShell>
+      <InventoryProvider>
+        <AppShell>{children}</AppShell>
+      </InventoryProvider>
     </AppStoreProvider>
   );
 }
