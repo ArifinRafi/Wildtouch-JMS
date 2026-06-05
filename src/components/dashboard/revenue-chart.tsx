@@ -17,9 +17,6 @@ const COLORS = [
 
 const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// Mock revenue per day (oldest → newest)
-const SEED_REVENUE = [3200, 1850, 4750, 2900, 5100, 3600, 4280];
-
 interface DayEntry {
   day: string;
   date: string;
@@ -40,7 +37,7 @@ function CustomTooltip({ active, payload }: any) {
   );
 }
 
-export function RevenueChart() {
+export function RevenueChart({ series = [] }: { series?: number[] }) {
   const data = useMemo<DayEntry[]>(() => {
     const today = new Date();
     return Array.from({ length: 7 }, (_, i) => {
@@ -50,16 +47,19 @@ export function RevenueChart() {
         day: DAY_SHORT[d.getDay()],
         date: d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
         fullDate: d.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long" }),
-        value: SEED_REVENUE[i],
+        value: series[i] ?? 0,
         isToday: i === 6,
       };
     });
-  }, []);
+  }, [series]);
 
   const total = data.reduce((s, d) => s + d.value, 0);
   const todayRevenue = data[6].value;
   const yesterdayRevenue = data[5].value;
-  const todayChange = Math.round(((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100);
+  const todayChange =
+    yesterdayRevenue > 0
+      ? Math.round(((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100)
+      : 0;
 
   return (
     <motion.div
@@ -122,7 +122,7 @@ export function RevenueChart() {
         {/* Day-by-day breakdown */}
         <div className="flex-1 w-full space-y-2.5">
           {data.map((d, i) => {
-            const pct = Math.round((d.value / total) * 100);
+            const pct = total > 0 ? Math.round((d.value / total) * 100) : 0;
             return (
               <div key={`row-${i}`} className="flex items-center gap-2.5">
                 <div

@@ -2,19 +2,18 @@
 
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { AnimatedCard } from "./animated-card";
 
-const lowStockItems = [
-  { name: "Jump Rings (JR-001)", current: 45, threshold: 100, unit: "pcs" },
-  { name: "Silver Clasp (SC-014)", current: 12, threshold: 50, unit: "pcs" },
-  { name: "Gift Boxes Small (BX-S)", current: 28, threshold: 100, unit: "pcs" },
-  { name: "Backing Cards A5 (BC-A5)", current: 60, threshold: 200, unit: "pcs" },
-  { name: "Printer Ink Black", current: 1, threshold: 3, unit: "cartridges" },
-];
+export interface StockAlertItem {
+  name: string;
+  current: number;
+  threshold: number;
+  unit: string;
+}
 
-export function StockAlerts() {
+export function StockAlerts({ items = [] }: { items?: StockAlertItem[] }) {
+  const lowStockItems = items;
   return (
     <AnimatedCard delay={0.3}>
       <div className="p-5 space-y-4">
@@ -30,8 +29,15 @@ export function StockAlerts() {
           </Badge>
         </div>
 
+        {lowStockItems.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+            <CheckCircle2 className="h-8 w-8 text-emerald-500/50 mb-2" />
+            <p className="text-xs font-medium">No low-stock components</p>
+          </div>
+        )}
+
         {lowStockItems.map((item, i) => {
-          const percentage = Math.round((item.current / item.threshold) * 100);
+          const percentage = item.threshold > 0 ? Math.round((item.current / item.threshold) * 100) : 0;
           const isCritical = percentage < 25;
 
           return (

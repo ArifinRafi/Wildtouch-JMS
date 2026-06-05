@@ -4,10 +4,11 @@ import {
   createContext,
   useContext,
   useReducer,
+  useEffect,
   ReactNode,
   useMemo,
 } from "react";
-import { clients as seedClients, type Client } from "@/lib/mock-data/clients";
+import { type Client } from "@/lib/mock-data/clients";
 export type { Client } from "@/lib/mock-data/clients";
 export type { ClientPricing } from "@/lib/mock-data/clients";
 export type { AdditionalContact } from "@/lib/mock-data/clients";
@@ -49,6 +50,7 @@ interface AppState {
   productionLogs: ProductionLog[];
   products: Product[];
   clients: Client[];
+  clientsLoading: boolean;
 }
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
@@ -61,7 +63,8 @@ type Action =
   | { type: "ADD_PRODUCT";    data: Omit<Product, "id"> }
   | { type: "UPDATE_PRODUCT"; id: string; data: Partial<Omit<Product, "id">> }
   | { type: "DELETE_PRODUCT"; id: string }
-  | { type: "ADD_CLIENT";     data: Omit<Client, "id"> }
+  | { type: "SET_CLIENTS";    data: Client[] }
+  | { type: "INSERT_CLIENT";  data: Client }
   | { type: "UPDATE_CLIENT";  id: string; data: Partial<Omit<Client, "id">> }
   | { type: "DELETE_CLIENT";  id: string };
 
@@ -170,14 +173,12 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
 
-    // ── Clients ──────────────────────────────────────────────────────────────
-    case "ADD_CLIENT": {
-      const maxNum = state.clients.reduce((m, c) => {
-        const n = parseInt(c.id.split("-")[1], 10);
-        return n > m ? n : m;
-      }, 0);
-      const id = `CLT-${String(maxNum + 1).padStart(3, "0")}`;
-      return { ...state, clients: [...state.clients, { id, ...action.data }] };
+    // ── Clients (DB-backed) ────────────────────────────────────────────────
+    case "SET_CLIENTS": {
+      return { ...state, clients: action.data, clientsLoading: false };
+    }
+    case "INSERT_CLIENT": {
+      return { ...state, clients: [...state.clients, action.data] };
     }
     case "UPDATE_CLIENT": {
       return {
@@ -232,7 +233,8 @@ const initialState: AppState = {
   staff: seedStaff,
   productionLogs: seedLogs,
   products: seedProducts,
-  clients: [...seedClients],
+  clients: [],
+  clientsLoading: true,
 };
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -246,6 +248,26 @@ const AppStoreContext = createContext<AppStoreContextValue | null>(null);
 // ─── Provider ─────────────────────────────────────────────────────────────────
 export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+
+  // Load clients from the database on mount.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/clients");
+        if (!res.ok) throw new Error("Failed to load clients");
+        const data: Client[] = await res.json();
+        if (active) dispatch({ type: "SET_CLIENTS", data });
+      } catch (err) {
+        console.error(err);
+        if (active) dispatch({ type: "SET_CLIENTS", data: [] });
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const value = useMemo(() => ({ state, dispatch }), [state]);
   return (
     <AppStoreContext.Provider value={value}>
@@ -266,6 +288,7 @@ export function useAppStore() {
     productionLogs: state.productionLogs,
     products:       state.products,
     clients:        state.clients,
+    clientsLoading: state.clientsLoading,
 
     // Staff actions
     addStaff:    (data: Omit<ProductionStaff, "id">) => dispatch({ type: "ADD_STAFF", data }),
@@ -281,9 +304,29 @@ export function useAppStore() {
     updateProduct: (id: string, data: Partial<Omit<Product, "id">>)    => dispatch({ type: "UPDATE_PRODUCT", id, data }),
     deleteProduct: (id: string)                                          => dispatch({ type: "DELETE_PRODUCT", id }),
 
-    // Client actions
-    addClient:    (data: Omit<Client, "id">)                          => dispatch({ type: "ADD_CLIENT",    data }),
-    updateClient: (id: string, data: Partial<Omit<Client, "id">>)    => dispatch({ type: "UPDATE_CLIENT", id, data }),
-    deleteClient: (id: string)                                          => dispatch({ type: "DELETE_CLIENT", id }),
+    // Client actions (DB-backed via /api/clients)
+    addClient: async (data: Omit<Client, "id">) => {
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to add client");
+      const created: Client = await res.json();
+      dispatch({ type: "INSERT_CLIENT", data: created });
+      return created;
+    },
+    updateClient: (id: string, data: Partial<Omit<Client, "id">>) => {
+      dispatch({ type: "UPDATE_CLIENT", id, data }); // optimistic
+      fetch(`/api/clients/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }).catch((err) => console.error(err));
+    },
+    deleteClient: (id: string) => {
+      dispatch({ type: "DELETE_CLIENT", id }); // optimistic
+      fetch(`/api/clients/${id}`, { method: "DELETE" }).catch((err) => console.error(err));
+    },
   };
 }

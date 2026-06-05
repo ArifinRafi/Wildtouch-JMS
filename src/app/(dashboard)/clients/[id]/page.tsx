@@ -24,6 +24,7 @@ import {
   Image as ImageIcon,
   ScanLine,
   Users as UsersIcon,
+  Loader2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -317,6 +318,15 @@ export default function ClientDetailPage() {
   const inputCls = "rounded-xl bg-muted/30 border-border/40";
 
   // ── Not found ──
+  if (!client && store.clientsLoading) {
+    return (
+      <div className="flex items-center justify-center py-24 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin mr-2" />
+        <span className="text-sm">Loading client…</span>
+      </div>
+    );
+  }
+
   if (!client) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
