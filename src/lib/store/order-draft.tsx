@@ -18,6 +18,12 @@ export interface OrderDraft {
   planogram: { id: string; name: string } | null;
   lineItems: OrderLineItem[];
   componentRequirements: OrderComponentRequirement[];
+  /** Slot grid values for slot-type planograms (4-sided stands): [side][row][slot]. */
+  slots?: number[][][];
+  /** Segment grid values for segment-type planograms (keyrings/magnets): [segment][row][column]. */
+  segQty?: number[][][];
+  /** Row grid values for custom planograms: [side][row]. */
+  rowQty?: number[][];
   stockChecked: boolean;
   client: OrderClientSnapshot | null;
   notes: string;
@@ -27,6 +33,7 @@ export const emptyDraft = (): OrderDraft => ({
   planogram: null,
   lineItems: [],
   componentRequirements: [],
+  slots: undefined,
   stockChecked: false,
   client: null,
   notes: "",
