@@ -24,6 +24,7 @@ import {
   Home,
   Monitor,
   LayoutGrid,
+  Package,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -47,6 +48,7 @@ const navigation: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, section: "overview" },
   { title: "Clients", href: "/clients", icon: Users, section: "core" },
   { title: "Inventory", href: "/inventory", icon: Boxes, section: "core" },
+  { title: "Products", href: "/products", icon: Package, section: "core" },
   { title: "Planogram", href: "/planogram", icon: LayoutGrid, section: "core" },
   { title: "Digital Whiteboard", href: "/digital-whiteboard", icon: Monitor, section: "operations" },
   { title: "Orders", href: "/orders", icon: ShoppingCart, section: "operations" },

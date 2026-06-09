@@ -1,0 +1,81 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { connectDB } from "@/lib/db";
+import { Order, nextOrderNumber, serializeOrder } from "@/lib/models/Order";
+import { Invoice, nextInvoiceNumber, serializeInvoice } from "@/lib/models/Invoice";
+
+interface LineItemInput {
+  code?: string;
+  description?: string;
+  category?: string;
+  qtyOrdered?: number;
+  unitPrice?: number;
+  lineTotal?: number;
+}
+
+/**
+ * Confirm an order: creates the Order and a basic Invoice (planogram products +
+ * client info). Pricing is left at 0 for now.
+ */
+export async function POST(request: NextRequest) {
+  await connectDB();
+  const body = await request.json();
+
+  const lineItems: LineItemInput[] = Array.isArray(body.lineItems) ? body.lineItems : [];
+  if (lineItems.length === 0) {
+    return NextResponse.json({ error: "no line items" }, { status: 400 });
+  }
+  if (!body.client?.name && !body.client?.clientId) {
+    return NextResponse.json({ error: "client is required" }, { status: 400 });
+  }
+
+  const normalizedLines = lineItems.map((li) => ({
+    code: String(li.code ?? ""),
+    description: String(li.description ?? ""),
+    category: String(li.category ?? ""),
+    qtyOrdered: Math.max(0, Number(li.qtyOrdered) || 0),
+    unitPrice: Math.max(0, Number(li.unitPrice) || 0),
+    lineTotal: Math.max(0, Number(li.lineTotal) || 0),
+  }));
+
+  const subtotal = normalizedLines.reduce((s, l) => s + l.lineTotal, 0);
+  const total = subtotal;
+
+  // 1. Create the order
+  const orderNumber = await nextOrderNumber();
+  const order = await Order.create({
+    orderNumber,
+    status: "received",
+    planogram: { id: String(body.planogram?.id ?? ""), name: String(body.planogram?.name ?? "") },
+    client: body.client ?? {},
+    lineItems: normalizedLines,
+    componentRequirements: Array.isArray(body.componentRequirements) ? body.componentRequirements : [],
+    subtotal,
+    total,
+    notes: String(body.notes ?? ""),
+  });
+
+  // 2. Create the invoice
+  const invoiceNumber = await nextInvoiceNumber();
+  const invoice = await Invoice.create({
+    invoiceNumber,
+    orderId: order._id,
+    orderNumber,
+    client: body.client ?? {},
+    lineItems: normalizedLines.map((l) => ({
+      code: l.code,
+      description: l.description,
+      qty: l.qtyOrdered,
+      unitPrice: l.unitPrice,
+      lineTotal: l.lineTotal,
+    })),
+    subtotal,
+    total,
+    currency: "GBP",
+    status: "issued",
+  });
+
+  return NextResponse.json(
+    { order: serializeOrder(order.toObject()), invoice: serializeInvoice(invoice.toObject()) },
+    { status: 201 },
+  );
+}

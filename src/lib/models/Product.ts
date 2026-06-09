@@ -17,7 +17,7 @@ const ProductComponentSchema = new Schema(
 const ProductSchema = new Schema(
   {
     name: { type: String, required: true },
-    planogramId: { type: String, required: true, index: true },
+    planogramId: { type: String, default: "", index: true },
     planogramName: { type: String, default: "" },
     segment: { type: String, default: "" },
     image: { type: String, default: null },
