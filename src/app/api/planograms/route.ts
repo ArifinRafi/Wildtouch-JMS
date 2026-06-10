@@ -5,27 +5,8 @@ import {
   serializePlanogram,
   slugify,
   computeTotalUnits,
+  cleanSides,
 } from "@/lib/models/Planogram";
-
-interface SideInput {
-  label?: string;
-  rows?: { description?: string; defaultQty?: number }[];
-}
-
-function cleanSides(raw: unknown): { label: string; rows: { description: string; defaultQty: number }[] }[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((s: SideInput, i) => ({
-    label: String(s.label ?? `Side ${i + 1}`).trim() || `Side ${i + 1}`,
-    rows: Array.isArray(s.rows)
-      ? s.rows
-          .map((r) => ({
-            description: String(r.description ?? "").trim(),
-            defaultQty: Math.max(0, Number(r.defaultQty) || 0),
-          }))
-          .filter((r) => r.description || r.defaultQty > 0)
-      : [],
-  }));
-}
 
 export async function GET() {
   await connectDB();

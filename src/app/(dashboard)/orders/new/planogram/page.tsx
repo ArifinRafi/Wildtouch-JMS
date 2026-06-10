@@ -46,7 +46,7 @@ export default function PlanogramStepPage() {
   const [segActive, setSegActive] = useState(0);
   const segInited = useRef<string | null>(null);
 
-  const [rowQty, setRowQty] = useState<number[][]>([]);
+  const [rowQty, setRowQty] = useState<number[][][]>([]);
   const [rowActive, setRowActive] = useState(0);
   const rowInited = useRef<string | null>(null);
 
@@ -73,7 +73,7 @@ export default function PlanogramStepPage() {
     setRowQty(
       draft.rowQty && draft.rowQty.length
         ? draft.rowQty
-        : customPg.sides.map((s) => s.rows.map((r) => r.defaultQty)),
+        : customPg.sides.map((s) => s.rows.map((r) => [...r.cells])),
     );
     setRowActive(0);
   }, [customPg, draft.rowQty]);
@@ -118,12 +118,12 @@ export default function PlanogramStepPage() {
     return true;
   };
 
-  const rowGrand = rowQty.reduce((s, side) => s + side.reduce((a, b) => a + b, 0), 0);
+  const rowGrand = rowQty.reduce((s, side) => s + side.reduce((a, row) => a + row.reduce((x, y) => x + y, 0), 0), 0);
   const rowNext = (): boolean => {
     if (!customPg) return false;
     const map = new Map<string, number>();
     customPg.sides.forEach((side, si) => side.rows.forEach((r, ri) => {
-      const q = rowQty[si]?.[ri] ?? 0;
+      const q = (rowQty[si]?.[ri] ?? []).reduce((a, b) => a + b, 0);
       if (r.description.trim() && q > 0) map.set(r.description, (map.get(r.description) ?? 0) + q);
     }));
     const lineItems = [...map.entries()].map(([d, q]) => lineItemFor(d, q));
@@ -210,8 +210,8 @@ export default function PlanogramStepPage() {
       <div className="space-y-6">
         {headerBar}
         <RowPlanogramGrid
-          sides={customPg.sides.map((s) => ({ label: s.label, rows: s.rows }))}
-          value={rowQty.length ? rowQty : customPg.sides.map((s) => s.rows.map((r) => r.defaultQty))}
+          sides={customPg.sides.map((s) => ({ label: s.label, columns: s.columns, rows: s.rows.map((r) => ({ description: r.description })) }))}
+          value={rowQty.length ? rowQty : customPg.sides.map((s) => s.rows.map((r) => [...r.cells]))}
           onChange={setRowQty}
           activeSide={rowActive}
           onActiveSideChange={setRowActive}

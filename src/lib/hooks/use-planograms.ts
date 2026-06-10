@@ -4,10 +4,12 @@ import { useEffect, useState, useCallback } from "react";
 
 export interface CustomPlanogramRow {
   description: string;
-  defaultQty: number;
+  /** Per-column quantities. */
+  cells: number[];
 }
 export interface CustomPlanogramSide {
   label: string;
+  columns: number;
   rows: CustomPlanogramRow[];
 }
 export interface CustomPlanogram {

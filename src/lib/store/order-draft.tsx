@@ -22,8 +22,8 @@ export interface OrderDraft {
   slots?: number[][][];
   /** Segment grid values for segment-type planograms (keyrings/magnets): [segment][row][column]. */
   segQty?: number[][][];
-  /** Row grid values for custom planograms: [side][row]. */
-  rowQty?: number[][];
+  /** Grid values for custom planograms: [side][row][column]. */
+  rowQty?: number[][][];
   stockChecked: boolean;
   client: OrderClientSnapshot | null;
   notes: string;

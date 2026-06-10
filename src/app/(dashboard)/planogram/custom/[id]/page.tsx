@@ -55,7 +55,8 @@ export default function CustomPlanogramPage() {
     return () => { on = false; };
   }, [id]);
 
-  const sideTotals = pg ? pg.sides.map((s) => s.rows.reduce((a, r) => a + (r.defaultQty || 0), 0)) : [];
+  const rowTotal = (cells: number[]) => cells.reduce((a, b) => a + b, 0);
+  const sideTotals = pg ? pg.sides.map((s) => s.rows.reduce((a, r) => a + rowTotal(r.cells), 0)) : [];
 
   const doDelete = useCallback(async () => {
     await fetch(`/api/planograms/${id}`, { method: "DELETE" });
@@ -66,11 +67,12 @@ export default function CustomPlanogramPage() {
     if (!pg) return;
     const sidesHtml = pg.sides
       .map((s) => {
-        const total = s.rows.reduce((a, r) => a + (r.defaultQty || 0), 0);
+        const total = s.rows.reduce((a, r) => a + rowTotal(r.cells), 0);
+        const colHead = Array.from({ length: s.columns }, (_, i) => `<th class="sl">Col ${i + 1}</th>`).join("");
         const rows = s.rows
-          .map((r, i) => `<tr><td class="rn">${i + 1}</td><td>${r.description || "—"}</td><td class="sl">${r.defaultQty}</td></tr>`)
+          .map((r, i) => `<tr><td class="rn">${i + 1}</td><td>${r.description || "—"}</td>${r.cells.map((c) => `<td class="sl">${c}</td>`).join("")}<td class="sl">${rowTotal(r.cells)}</td></tr>`)
           .join("");
-        return `<h3>${s.label} — ${total} units</h3><table><thead><tr><th>Row</th><th>Description</th><th>Qty</th></tr></thead><tbody>${rows}</tbody></table>`;
+        return `<h3>${s.label} — ${total} units</h3><table><thead><tr><th>Row</th><th>Description</th>${colHead}<th class="sl">Total</th></tr></thead><tbody>${rows}</tbody></table>`;
       })
       .join("");
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Planogram — ${pg.name}</title>
@@ -167,7 +169,10 @@ ${sidesHtml}</body></html>`;
                 <tr className="border-b border-border/30 bg-muted/30">
                   <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-14">Row</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Description</th>
-                  <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-28">Qty</th>
+                  {Array.from({ length: side.columns }, (_, ci) => (
+                    <th key={ci} className="px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-24">Col {ci + 1}</th>
+                  ))}
+                  <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-20">Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -175,7 +180,10 @@ ${sidesHtml}</body></html>`;
                   <tr key={ri} className="border-b border-border/15 last:border-b-0 hover:bg-accent/10">
                     <td className="px-4 py-3 text-center text-[11px] font-bold text-muted-foreground tabular-nums">{ri + 1}</td>
                     <td className="px-4 py-3 text-sm font-medium">{r.description || <span className="text-muted-foreground/40">—</span>}</td>
-                    <td className="px-4 py-3 text-right text-sm font-bold tabular-nums">{r.defaultQty}</td>
+                    {r.cells.map((c, ci) => (
+                      <td key={ci} className="px-3 py-3 text-center text-sm tabular-nums">{c}</td>
+                    ))}
+                    <td className="px-4 py-3 text-right text-sm font-bold tabular-nums text-primary">{rowTotal(r.cells)}</td>
                   </tr>
                 ))}
               </tbody>

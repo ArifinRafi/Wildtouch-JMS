@@ -5,6 +5,7 @@ import {
   Planogram,
   serializePlanogram,
   computeTotalUnits,
+  cleanSides,
 } from "@/lib/models/Planogram";
 
 export async function GET(
@@ -35,15 +36,7 @@ export async function PATCH(
   const patch: Record<string, unknown> = {};
   if (body.name !== undefined) patch.name = String(body.name).trim();
   if (Array.isArray(body.sides)) {
-    const sides = body.sides.map((s: { label?: string; rows?: { description?: string; defaultQty?: number }[] }, i: number) => ({
-      label: String(s.label ?? `Side ${i + 1}`).trim() || `Side ${i + 1}`,
-      rows: Array.isArray(s.rows)
-        ? s.rows.map((r) => ({
-            description: String(r.description ?? "").trim(),
-            defaultQty: Math.max(0, Number(r.defaultQty) || 0),
-          }))
-        : [],
-    }));
+    const sides = cleanSides(body.sides);
     patch.sides = sides;
     patch.totalUnits = computeTotalUnits(sides);
   }
