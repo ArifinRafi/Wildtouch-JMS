@@ -1,22 +1,32 @@
-// Browser-direct (unsigned) Cloudinary image upload.
-// Configure via NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME + NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET.
+// Browser image upload to Cloudinary (unsigned). Config is fetched at runtime
+// from /api/upload-config (server env) so it never depends on NEXT_PUBLIC
+// build-time inlining or stale bundles.
 
-const CLOUD = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-const PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+interface UploadConfig { configured: boolean; cloudName: string; preset: string }
 
-export function cloudinaryConfigured(): boolean {
-  return Boolean(CLOUD && PRESET);
+let cached: UploadConfig | null = null;
+
+export async function getUploadConfig(): Promise<UploadConfig> {
+  if (cached) return cached;
+  try {
+    const res = await fetch("/api/upload-config", { cache: "no-store" });
+    cached = (await res.json()) as UploadConfig;
+  } catch {
+    cached = { configured: false, cloudName: "", preset: "" };
+  }
+  return cached;
 }
 
 /** Upload an image file to Cloudinary; returns the secure URL. */
 export async function uploadImage(file: File): Promise<string> {
-  if (!CLOUD || !PRESET) {
-    throw new Error("Image upload is not configured (set NEXT_PUBLIC_CLOUDINARY_* env vars).");
+  const cfg = await getUploadConfig();
+  if (!cfg.configured) {
+    throw new Error("Image upload is not configured (set Cloudinary env vars on the server / Vercel).");
   }
   const fd = new FormData();
   fd.append("file", file);
-  fd.append("upload_preset", PRESET);
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD}/image/upload`, {
+  fd.append("upload_preset", cfg.preset);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`, {
     method: "POST",
     body: fd,
   });
@@ -35,6 +45,6 @@ export async function uploadImage(file: File): Promise<string> {
 /** Derive a small, optimized thumbnail URL from a Cloudinary image URL. */
 export function thumbUrl(url: string | null | undefined, size = 120): string {
   if (!url) return "";
-  if (!url.includes("/upload/")) return url; // non-Cloudinary or already transformed
+  if (!url.includes("/upload/")) return url;
   return url.replace("/upload/", `/upload/w_${size},h_${size},c_fill,q_auto,f_auto/`);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { uploadImage, thumbUrl, cloudinaryConfigured } from "@/lib/cloudinary";
+import { uploadImage, thumbUrl, getUploadConfig } from "@/lib/cloudinary";
 
 interface RowState { description: string; cells: number[]; image: string }
 interface SideState { label: string; columns: number; rows: RowState[] }
@@ -40,6 +40,11 @@ export default function NewPlanogramPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
+  const [imgConfigured, setImgConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    getUploadConfig().then((c) => setImgConfigured(c.configured)).catch(() => setImgConfigured(false));
+  }, []);
 
   const inputCls = "rounded-xl bg-muted/30 border-border/40";
 
@@ -180,7 +185,7 @@ export default function NewPlanogramPage() {
             ))}
           </div>
 
-          {!cloudinaryConfigured() && (
+          {imgConfigured === false && (
             <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-lg px-3 py-2 border border-amber-500/20">
               Image upload isn&rsquo;t configured yet — set the Cloudinary env vars to enable per-product images.
             </p>
