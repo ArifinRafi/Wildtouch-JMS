@@ -4,7 +4,6 @@ import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import {
-  ArrowLeft,
   Search,
   Boxes,
   Package,
@@ -159,19 +158,13 @@ export default function AllComponentsPage() {
     <div className="space-y-6 pb-12">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-        <Link
-          href="/inventory"
-          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mb-3 transition-colors"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" /> Back to Inventory
-        </Link>
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground/90 to-foreground/60 bg-clip-text text-transparent">
-              All Components
+              Inventory
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Every product across all categories ·{" "}
+              All components ·{" "}
               <span className="font-semibold text-primary">{items.length.toLocaleString()} components</span>
             </p>
           </div>
