@@ -210,7 +210,7 @@ export default function PlanogramStepPage() {
       <div className="space-y-6">
         {headerBar}
         <RowPlanogramGrid
-          sides={customPg.sides.map((s) => ({ label: s.label, columns: s.columns, rows: s.rows.map((r) => ({ description: r.description })) }))}
+          sides={customPg.sides.map((s) => ({ label: s.label, columns: s.columns, rows: s.rows.map((r) => ({ description: r.description, image: r.image })) }))}
           value={rowQty.length ? rowQty : customPg.sides.map((s) => s.rows.map((r) => [...r.cells]))}
           onChange={setRowQty}
           activeSide={rowActive}

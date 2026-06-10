@@ -5,6 +5,8 @@ const PlanogramRowSchema = new Schema(
     description: { type: String, default: "" },
     /** Per-column quantities for this row. */
     cells: { type: [Number], default: [] },
+    /** Product image URL (Cloudinary). */
+    image: { type: String, default: "" },
     /** Legacy single-quantity (pre-columns); read-only fallback. */
     defaultQty: { type: Number },
   },
@@ -46,7 +48,7 @@ export function slugify(name: string): string {
     .slice(0, 60);
 }
 
-interface RawRow { description?: string | null; cells?: (number | null)[] | null; defaultQty?: number | null }
+interface RawRow { description?: string | null; cells?: (number | null)[] | null; image?: string | null; defaultQty?: number | null }
 interface RawSide { label?: string | null; columns?: number | null; rows?: RawRow[] | null }
 
 /** Normalize raw side input (from the API) into clean, padded sides. */
@@ -60,9 +62,9 @@ export function cleanSides(raw: unknown): { label: string; columns: number; rows
         if (!cells.length && r.defaultQty != null) cells = [Math.max(0, Number(r.defaultQty) || 0)];
         while (cells.length < columns) cells.push(0);
         if (cells.length > columns) cells = cells.slice(0, columns);
-        return { description: String(r.description ?? "").trim(), cells };
+        return { description: String(r.description ?? "").trim(), cells, image: String(r.image ?? "") };
       })
-      .filter((r) => r.description || r.cells.some((c) => c > 0));
+      .filter((r) => r.description || r.image || r.cells.some((c) => c > 0));
     return { label: String(s.label ?? `Side ${i + 1}`).trim() || `Side ${i + 1}`, columns, rows };
   });
 }
@@ -100,7 +102,7 @@ export function serializePlanogram(doc: {
     source: doc.source ?? "custom",
     totalUnits: doc.totalUnits ?? 0,
     sides: (doc.sides ?? []).map((s) => {
-      const rows = (s.rows ?? []).map((r) => ({ description: r.description ?? "", cells: rowCells(r) }));
+      const rows = (s.rows ?? []).map((r) => ({ description: r.description ?? "", cells: rowCells(r), image: r.image ?? "" }));
       const columns = s.columns ?? Math.max(1, ...rows.map((r) => r.cells.length));
       // pad/truncate cells to columns
       for (const r of rows) {

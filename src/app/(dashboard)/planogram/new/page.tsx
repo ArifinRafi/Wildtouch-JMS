@@ -15,13 +15,16 @@ import {
   Wand2,
   X,
   Columns3,
+  ImagePlus,
+  Loader2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { uploadImage, thumbUrl, cloudinaryConfigured } from "@/lib/cloudinary";
 
-interface RowState { description: string; cells: number[] }
+interface RowState { description: string; cells: number[]; image: string }
 interface SideState { label: string; columns: number; rows: RowState[] }
 
 export default function NewPlanogramPage() {
@@ -36,6 +39,7 @@ export default function NewPlanogramPage() {
   const [active, setActive] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [uploading, setUploading] = useState<Record<string, boolean>>({});
 
   const inputCls = "rounded-xl bg-muted/30 border-border/40";
 
@@ -48,7 +52,7 @@ export default function NewPlanogramPage() {
     setSides(Array.from({ length: s }, (_, i) => ({
       label: `Side ${i + 1}`,
       columns: c,
-      rows: Array.from({ length: r }, () => ({ description: "", cells: Array(c).fill(1) })),
+      rows: Array.from({ length: r }, () => ({ description: "", cells: Array(c).fill(1), image: "" })),
     })));
     setActive(0);
     setMode("edit");
@@ -64,7 +68,23 @@ export default function NewPlanogramPage() {
   const setCell = (ri: number, ci: number, v: number) =>
     mutateSide((s) => ({ ...s, rows: s.rows.map((r, i) => (i === ri ? { ...r, cells: r.cells.map((c, j) => (j === ci ? Math.max(0, v) : c)) } : r)) }));
   const addRow = () =>
-    mutateSide((s) => ({ ...s, rows: [...s.rows, { description: "", cells: Array(s.columns).fill(1) }] }));
+    mutateSide((s) => ({ ...s, rows: [...s.rows, { description: "", cells: Array(s.columns).fill(1), image: "" }] }));
+  const setImage = (ri: number, url: string) =>
+    mutateSide((s) => ({ ...s, rows: s.rows.map((r, i) => (i === ri ? { ...r, image: url } : r)) }));
+  const handleUpload = async (ri: number, file: File | undefined) => {
+    if (!file) return;
+    const key = `${active}:${ri}`;
+    setUploading((u) => ({ ...u, [key]: true }));
+    setError("");
+    try {
+      const url = await uploadImage(file);
+      setImage(ri, url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Image upload failed.");
+    } finally {
+      setUploading((u) => ({ ...u, [key]: false }));
+    }
+  };
   const removeRow = (ri: number) =>
     mutateSide((s) => ({ ...s, rows: s.rows.filter((_, i) => i !== ri) }));
   const addColumn = () =>
@@ -160,6 +180,12 @@ export default function NewPlanogramPage() {
             ))}
           </div>
 
+          {!cloudinaryConfigured() && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-lg px-3 py-2 border border-amber-500/20">
+              Image upload isn&rsquo;t configured yet — set the Cloudinary env vars to enable per-product images.
+            </p>
+          )}
+
           {/* Grid */}
           <AnimatePresence mode="wait">
             <motion.div key={active} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2 }}
@@ -169,6 +195,7 @@ export default function NewPlanogramPage() {
                   <thead>
                     <tr className="border-b border-border/30 bg-muted/30">
                       <th className="px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-12">Row</th>
+                      <th className="px-2 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-16">Image</th>
                       <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground min-w-[180px]">Description</th>
                       {Array.from({ length: cfg?.columns ?? 0 }, (_, ci) => (
                         <th key={ci} className="px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-28">
@@ -188,6 +215,25 @@ export default function NewPlanogramPage() {
                     {cfg?.rows.map((r, ri) => (
                       <tr key={ri} className="border-b border-border/15 last:border-b-0 hover:bg-accent/10">
                         <td className="px-3 py-2 text-center text-[11px] font-bold text-muted-foreground tabular-nums">{ri + 1}</td>
+                        <td className="px-2 py-2">
+                          <div className="flex justify-center">
+                            {r.image ? (
+                              <div className="relative group">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={thumbUrl(r.image, 80)} alt="" className="h-10 w-10 rounded-lg object-cover border border-border/40" />
+                                <button onClick={() => setImage(ri, "")} title="Remove image"
+                                  className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <X className="h-2.5 w-2.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <label className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-dashed border-border/50 text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors" title="Upload image">
+                                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUpload(ri, e.target.files?.[0])} />
+                                {uploading[`${active}:${ri}`] ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                              </label>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-3 py-2">
                           <Input value={r.description} onChange={(e) => setDesc(ri, e.target.value)} placeholder="Product name…" className="rounded-lg bg-muted/20 border-border/30 h-9 text-sm" />
                         </td>

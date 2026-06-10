@@ -3,11 +3,12 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, Box, Minus, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { thumbUrl } from "@/lib/cloudinary";
 
 export interface RowPlanogramSide {
   label: string;
   columns: number;
-  rows: { description: string }[];
+  rows: { description: string; image?: string }[];
 }
 
 /**
@@ -90,7 +91,15 @@ export function RowPlanogramGrid({
                   return (
                     <tr key={ri} className="border-b border-border/15 last:border-b-0 hover:bg-accent/10">
                       <td className="px-3 py-2.5 text-center text-[11px] font-bold text-muted-foreground tabular-nums">{ri + 1}</td>
-                      <td className="px-3 py-2.5 text-sm font-medium">{r.description || <span className="text-muted-foreground/40">—</span>}</td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-2">
+                          {r.image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={thumbUrl(r.image, 64)} alt="" className="h-8 w-8 rounded-lg object-cover border border-border/40 shrink-0" />
+                          ) : null}
+                          <span className="text-sm font-medium">{r.description || <span className="text-muted-foreground/40">—</span>}</span>
+                        </div>
+                      </td>
                       {cols.map((ci) => {
                         const v = rowCells[ci] ?? 0;
                         return (

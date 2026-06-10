@@ -6,6 +6,8 @@ export interface CustomPlanogramRow {
   description: string;
   /** Per-column quantities. */
   cells: number[];
+  /** Product image URL. */
+  image?: string;
 }
 export interface CustomPlanogramSide {
   label: string;

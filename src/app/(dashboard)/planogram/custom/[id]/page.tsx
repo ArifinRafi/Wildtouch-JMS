@@ -22,6 +22,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { thumbUrl } from "@/lib/cloudinary";
 import type { CustomPlanogram } from "@/lib/hooks/use-planograms";
 
 export default function CustomPlanogramPage() {
@@ -179,7 +180,15 @@ ${sidesHtml}</body></html>`;
                 {side.rows.map((r, ri) => (
                   <tr key={ri} className="border-b border-border/15 last:border-b-0 hover:bg-accent/10">
                     <td className="px-4 py-3 text-center text-[11px] font-bold text-muted-foreground tabular-nums">{ri + 1}</td>
-                    <td className="px-4 py-3 text-sm font-medium">{r.description || <span className="text-muted-foreground/40">—</span>}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        {r.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={thumbUrl(r.image, 64)} alt="" className="h-8 w-8 rounded-lg object-cover border border-border/40 shrink-0" />
+                        ) : null}
+                        <span className="text-sm font-medium">{r.description || <span className="text-muted-foreground/40">—</span>}</span>
+                      </div>
+                    </td>
                     {r.cells.map((c, ci) => (
                       <td key={ci} className="px-3 py-3 text-center text-sm tabular-nums">{c}</td>
                     ))}
