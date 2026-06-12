@@ -149,8 +149,8 @@ export function SegmentPlanogramGrid({
                                 <div className="flex items-center gap-0.5">
                                   <button onClick={() => setVal(activeSeg, ri, ci, v - 1)} disabled={v <= 0}
                                     className="h-5 w-5 flex items-center justify-center rounded-md border border-border/40 hover:bg-accent/60 disabled:opacity-30 transition-colors"><Minus className="h-2.5 w-2.5" /></button>
-                                  <input type="number" min={0} value={v}
-                                    onChange={(e) => setVal(activeSeg, ri, ci, parseInt(e.target.value, 10) || 0)}
+                                  <input type="text" inputMode="numeric" value={v}
+                                    onChange={(e) => setVal(activeSeg, ri, ci, parseInt(e.target.value.replace(/\D/g, ""), 10) || 0)}
                                     className={cn("w-8 text-center text-[11px] font-bold tabular-nums bg-transparent border-none outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:hidden",
                                       v > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground/40")} />
                                   <button onClick={() => setVal(activeSeg, ri, ci, v + 1)}

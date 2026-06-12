@@ -137,8 +137,8 @@ export function SlotPlanogramGrid({
                                 className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card hover:bg-accent/60 transition-colors disabled:opacity-30">
                                 <Minus className="h-3 w-3" />
                               </button>
-                              <input type="number" min={0} value={v}
-                                onChange={(e) => setSlot(activeSide, ri, ci, parseInt(e.target.value, 10) || 0)}
+                              <input type="text" inputMode="numeric" value={v}
+                                onChange={(e) => setSlot(activeSide, ri, ci, parseInt(e.target.value.replace(/\D/g, ""), 10) || 0)}
                                 className="h-7 w-12 rounded-md border border-border/40 bg-muted/30 text-center text-xs tabular-nums font-semibold text-emerald-600 dark:text-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" />
                               <button onClick={() => setSlot(activeSide, ri, ci, v + 1)}
                                 className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card hover:bg-accent/60 transition-colors">

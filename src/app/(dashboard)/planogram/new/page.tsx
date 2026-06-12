@@ -286,7 +286,7 @@ function CellEditor({
         <span className="max-w-[120px] truncate text-[10px] font-medium text-center" title={cell.product}>{cell.product}</span>
         <div className="flex items-center gap-1">
           <button onClick={() => onQty(cell.qty - 1)} disabled={cell.qty <= 0} className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card hover:bg-accent/60 disabled:opacity-30"><Minus className="h-3 w-3" /></button>
-          <input type="number" min={0} value={cell.qty} onChange={(e) => onQty(parseInt(e.target.value, 10) || 0)} className="h-7 w-12 rounded-md border border-border/40 bg-muted/30 text-center text-xs tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" />
+          <input type="text" inputMode="numeric" value={cell.qty} onChange={(e) => onQty(parseInt(e.target.value.replace(/\D/g, ""), 10) || 0)} className="h-7 w-12 rounded-md border border-border/40 bg-muted/30 text-center text-xs tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" />
           <button onClick={() => onQty(cell.qty + 1)} className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card hover:bg-accent/60"><Plus className="h-3 w-3" /></button>
         </div>
       </div>
@@ -327,9 +327,9 @@ function ProductPicker({
           {matches.length === 0 ? (
             <p className="px-3 py-2.5 text-xs text-muted-foreground">No matching products — create it in Products first.</p>
           ) : (
-            matches.map((p) => (
+            matches.map((p, idx) => (
               <button
-                key={p.name}
+                key={`${p.name}-${idx}`}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => { onSelect(p); setQuery(""); setOpen(false); }}
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent/40 transition-colors border-b border-border/10 last:border-b-0"
