@@ -26,7 +26,7 @@ export default function PlanogramStepPage() {
     const customList = custom.map((c) => ({
       id: c.id,
       name: c.name,
-      count: c.sides.reduce((a, s) => a + s.rows.filter((r) => r.description.trim()).length, 0),
+      count: c.sides.reduce((a, s) => a + s.rows.reduce((b, r) => b + r.cells.filter((cell) => cell.product.trim()).length, 0), 0),
     }));
     const builtin = getOrderablePlanograms().map((p) => ({ id: p.id, name: p.name, count: p.productCount }));
     return [...customList, ...builtin];
@@ -73,7 +73,7 @@ export default function PlanogramStepPage() {
     setRowQty(
       draft.rowQty && draft.rowQty.length
         ? draft.rowQty
-        : customPg.sides.map((s) => s.rows.map((r) => [...r.cells])),
+        : customPg.sides.map((s) => s.rows.map((r) => r.cells.map((c) => c.qty))),
     );
     setRowActive(0);
   }, [customPg, draft.rowQty]);
@@ -122,10 +122,10 @@ export default function PlanogramStepPage() {
   const rowNext = (): boolean => {
     if (!customPg) return false;
     const map = new Map<string, number>();
-    customPg.sides.forEach((side, si) => side.rows.forEach((r, ri) => {
-      const q = (rowQty[si]?.[ri] ?? []).reduce((a, b) => a + b, 0);
-      if (r.description.trim() && q > 0) map.set(r.description, (map.get(r.description) ?? 0) + q);
-    }));
+    customPg.sides.forEach((side, si) => side.rows.forEach((r, ri) => r.cells.forEach((c, ci) => {
+      const q = rowQty[si]?.[ri]?.[ci] ?? 0;
+      if (c.product.trim() && q > 0) map.set(c.product, (map.get(c.product) ?? 0) + q);
+    })));
     const lineItems = [...map.entries()].map(([d, q]) => lineItemFor(d, q));
     if (!lineItems.length) return false;
     patchDraft({ lineItems, rowQty, slots: undefined, segQty: undefined, stockChecked: false });
@@ -210,8 +210,8 @@ export default function PlanogramStepPage() {
       <div className="space-y-6">
         {headerBar}
         <RowPlanogramGrid
-          sides={customPg.sides.map((s) => ({ label: s.label, columns: s.columns, rows: s.rows.map((r) => ({ description: r.description, image: r.image })) }))}
-          value={rowQty.length ? rowQty : customPg.sides.map((s) => s.rows.map((r) => [...r.cells]))}
+          sides={customPg.sides.map((s) => ({ label: s.label, columns: s.columns, rows: s.rows.map((r) => ({ description: r.description, cells: r.cells.map((c) => ({ product: c.product, image: c.image })) })) }))}
+          value={rowQty.length ? rowQty : customPg.sides.map((s) => s.rows.map((r) => r.cells.map((c) => c.qty)))}
           onChange={setRowQty}
           activeSide={rowActive}
           onActiveSideChange={setRowActive}

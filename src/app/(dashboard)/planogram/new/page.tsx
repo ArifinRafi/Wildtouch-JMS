@@ -24,8 +24,11 @@ import { cn } from "@/lib/utils";
 import { thumbUrl } from "@/lib/cloudinary";
 import { useProducts } from "@/lib/hooks/use-products";
 
-interface RowState { description: string; cells: number[]; image: string }
+interface CellState { product: string; image: string; qty: number }
+interface RowState { description: string; cells: CellState[] }
 interface SideState { label: string; columns: number; rows: RowState[] }
+
+const emptyCell = (): CellState => ({ product: "", image: "", qty: 0 });
 
 export default function NewPlanogramPage() {
   const router = useRouter();
@@ -56,7 +59,7 @@ export default function NewPlanogramPage() {
     setSides(Array.from({ length: s }, (_, i) => ({
       label: `Side ${i + 1}`,
       columns: c,
-      rows: Array.from({ length: r }, () => ({ description: "", cells: Array(c).fill(1), image: "" })),
+      rows: Array.from({ length: r }, () => ({ description: "", cells: Array.from({ length: c }, emptyCell) })),
     })));
     setActive(0);
     setMode("edit");
@@ -67,28 +70,34 @@ export default function NewPlanogramPage() {
   const mutateSide = (fn: (s: SideState) => SideState) =>
     setSides((prev) => prev.map((s, i) => (i === active ? fn(s) : s)));
 
-  const setCell = (ri: number, ci: number, v: number) =>
-    mutateSide((s) => ({ ...s, rows: s.rows.map((r, i) => (i === ri ? { ...r, cells: r.cells.map((c, j) => (j === ci ? Math.max(0, v) : c)) } : r)) }));
+  const mutateCell = (ri: number, ci: number, fn: (c: CellState) => CellState) =>
+    mutateSide((s) => ({ ...s, rows: s.rows.map((r, i) => (i === ri ? { ...r, cells: r.cells.map((c, j) => (j === ci ? fn(c) : c)) } : r)) }));
+
+  const setCellQty = (ri: number, ci: number, v: number) =>
+    mutateCell(ri, ci, (c) => ({ ...c, qty: Math.max(0, v) }));
+  const setCellProduct = (ri: number, ci: number, name: string, image: string) =>
+    mutateCell(ri, ci, (c) => ({ ...c, product: name, image, qty: c.qty > 0 ? c.qty : 1 }));
+  const clearCellProduct = (ri: number, ci: number) =>
+    mutateCell(ri, ci, () => emptyCell());
+  const setRowDescription = (ri: number, v: string) =>
+    mutateSide((s) => ({ ...s, rows: s.rows.map((r, i) => (i === ri ? { ...r, description: v } : r)) }));
   const addRow = () =>
-    mutateSide((s) => ({ ...s, rows: [...s.rows, { description: "", cells: Array(s.columns).fill(1), image: "" }] }));
-  const setRowProduct = (ri: number, name: string, image: string) =>
-    mutateSide((s) => ({ ...s, rows: s.rows.map((r, i) => (i === ri ? { ...r, description: name, image } : r)) }));
-  const clearRowProduct = (ri: number) =>
-    mutateSide((s) => ({ ...s, rows: s.rows.map((r, i) => (i === ri ? { ...r, description: "", image: "" } : r)) }));
+    mutateSide((s) => ({ ...s, rows: [...s.rows, { description: "", cells: Array.from({ length: s.columns }, emptyCell) }] }));
   const removeRow = (ri: number) =>
     mutateSide((s) => ({ ...s, rows: s.rows.filter((_, i) => i !== ri) }));
   const addColumn = () =>
-    mutateSide((s) => ({ ...s, columns: s.columns + 1, rows: s.rows.map((r) => ({ ...r, cells: [...r.cells, 1] })) }));
+    mutateSide((s) => ({ ...s, columns: s.columns + 1, rows: s.rows.map((r) => ({ ...r, cells: [...r.cells, emptyCell()] })) }));
   const removeColumn = (ci: number) =>
     mutateSide((s) => (s.columns <= 1 ? s : ({ ...s, columns: s.columns - 1, rows: s.rows.map((r) => ({ ...r, cells: r.cells.filter((_, j) => j !== ci) })) })));
 
-  const sideTotal = (s: SideState) => s.rows.reduce((a, r) => a + r.cells.reduce((x, y) => x + y, 0), 0);
+  const rowTotal = (r: RowState) => r.cells.reduce((a, c) => a + c.qty, 0);
+  const sideTotal = (s: SideState) => s.rows.reduce((a, r) => a + rowTotal(r), 0);
   const grandTotal = sides.reduce((a, s) => a + sideTotal(s), 0);
-  const filledRows = sides.reduce((a, s) => a + s.rows.filter((r) => r.description.trim()).length, 0);
+  const productCount = sides.reduce((a, s) => a + s.rows.reduce((b, r) => b + r.cells.filter((c) => c.product.trim()).length, 0), 0);
 
   const save = async () => {
     if (!name.trim()) { setError("Please enter a planogram name."); return; }
-    if (filledRows === 0) { setError("Add at least one product description before saving."); return; }
+    if (productCount === 0) { setError("Select at least one product in a cell before saving."); return; }
     setError(""); setSaving(true);
     try {
       const res = await fetch("/api/planograms", {
@@ -119,7 +128,7 @@ export default function NewPlanogramPage() {
         <p className="text-sm text-muted-foreground mt-1">
           {mode === "setup"
             ? "Name it and choose the grid size to generate the layout."
-            : `${sides.length} sides · ${grandTotal} total units · ${filledRows} products`}
+            : `${sides.length} sides · ${grandTotal} total units · ${productCount} products`}
         </p>
       </motion.div>
 
@@ -146,7 +155,7 @@ export default function NewPlanogramPage() {
               <Input type="number" min={1} max={12} className={inputCls} value={colsPerSide} onChange={(e) => setColsPerSide(parseInt(e.target.value, 10) || 1)} />
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground">You can add or remove rows and columns on any side afterwards.</p>
+          <p className="text-[11px] text-muted-foreground">Each cell is its own product slot — you can add or remove rows and columns on any side afterwards.</p>
           <Button onClick={generate} className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold">
             <Wand2 className="h-4 w-4" /> Generate Grid
           </Button>
@@ -179,10 +188,9 @@ export default function NewPlanogramPage() {
                   <thead>
                     <tr className="border-b border-border/30 bg-muted/30">
                       <th className="px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-12">Row</th>
-                      <th className="px-2 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-16">Image</th>
-                      <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground min-w-[180px]">Description</th>
+                      <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground min-w-[160px]">Description</th>
                       {Array.from({ length: cfg?.columns ?? 0 }, (_, ci) => (
-                        <th key={ci} className="px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-28">
+                        <th key={ci} className="px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-44">
                           <div className="flex items-center justify-center gap-1">
                             Col {ci + 1}
                             {cfg.columns > 1 && (
@@ -197,39 +205,29 @@ export default function NewPlanogramPage() {
                   </thead>
                   <tbody>
                     {cfg?.rows.map((r, ri) => (
-                      <tr key={ri} className="border-b border-border/15 last:border-b-0 hover:bg-accent/10">
-                        <td className="px-3 py-2 text-center text-[11px] font-bold text-muted-foreground tabular-nums">{ri + 1}</td>
-                        <td className="px-2 py-2">
-                          <div className="flex justify-center">
-                            {r.image ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={thumbUrl(r.image, 80)} alt="" className="h-10 w-10 rounded-lg object-cover border border-border/40" />
-                            ) : (
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-dashed border-border/40 text-muted-foreground/40" title="Image comes from the selected product">
-                                <Package className="h-4 w-4" />
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <ProductPicker
+                      <tr key={ri} className="border-b border-border/15 last:border-b-0 hover:bg-accent/10 align-top">
+                        <td className="px-3 py-3 text-center text-[11px] font-bold text-muted-foreground tabular-nums">{ri + 1}</td>
+                        <td className="px-3 py-3">
+                          <Input
                             value={r.description}
-                            products={productOptions}
-                            onSelect={(p) => setRowProduct(ri, p.name, p.image ?? "")}
-                            onClear={() => clearRowProduct(ri)}
+                            onChange={(e) => setRowDescription(ri, e.target.value)}
+                            placeholder="Type a label…"
+                            className="rounded-lg bg-muted/20 border-border/30 h-9 text-sm"
                           />
                         </td>
-                        {r.cells.map((v, ci) => (
-                          <td key={ci} className="px-2 py-2">
-                            <div className="flex items-center justify-center gap-1">
-                              <button onClick={() => setCell(ri, ci, v - 1)} disabled={v <= 0} className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card hover:bg-accent/60 disabled:opacity-30"><Minus className="h-3 w-3" /></button>
-                              <input type="number" min={0} value={v} onChange={(e) => setCell(ri, ci, parseInt(e.target.value, 10) || 0)} className="h-7 w-12 rounded-md border border-border/40 bg-muted/30 text-center text-xs tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" />
-                              <button onClick={() => setCell(ri, ci, v + 1)} className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card hover:bg-accent/60"><Plus className="h-3 w-3" /></button>
-                            </div>
+                        {r.cells.map((c, ci) => (
+                          <td key={ci} className="px-2 py-3">
+                            <CellEditor
+                              cell={c}
+                              products={productOptions}
+                              onSelect={(p) => setCellProduct(ri, ci, p.name, p.image ?? "")}
+                              onClear={() => clearCellProduct(ri, ci)}
+                              onQty={(v) => setCellQty(ri, ci, v)}
+                            />
                           </td>
                         ))}
-                        <td className="px-3 py-2 text-center text-sm font-bold tabular-nums text-primary">{r.cells.reduce((a, b) => a + b, 0)}</td>
-                        <td className="px-2 py-2 text-center">
+                        <td className="px-3 py-3 text-center text-sm font-bold tabular-nums text-primary">{rowTotal(r)}</td>
+                        <td className="px-2 py-3 text-center">
                           <button onClick={() => removeRow(ri)} title="Remove row" className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                         </td>
                       </tr>
@@ -259,17 +257,51 @@ export default function NewPlanogramPage() {
   );
 }
 
-/** Type-ahead picker: planogram rows can only use products that already exist. */
-function ProductPicker({
-  value,
+/** A single grid cell: pick a product (photo auto-shows), then set its quantity. */
+function CellEditor({
+  cell,
   products,
   onSelect,
   onClear,
+  onQty,
 }: {
-  value: string;
+  cell: CellState;
   products: { name: string; image: string | null }[];
   onSelect: (p: { name: string; image: string | null }) => void;
   onClear: () => void;
+  onQty: (v: number) => void;
+}) {
+  if (cell.product) {
+    return (
+      <div className="flex flex-col items-center gap-1.5">
+        <div className="relative">
+          {cell.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={thumbUrl(cell.image, 96)} alt="" className="h-12 w-12 rounded-lg object-cover border border-border/40" />
+          ) : (
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-dashed border-border/40 text-muted-foreground/40"><Package className="h-4 w-4" /></div>
+          )}
+          <button onClick={onClear} title="Remove product" className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-white shadow-sm hover:bg-destructive/90"><X className="h-2.5 w-2.5" /></button>
+        </div>
+        <span className="max-w-[120px] truncate text-[10px] font-medium text-center" title={cell.product}>{cell.product}</span>
+        <div className="flex items-center gap-1">
+          <button onClick={() => onQty(cell.qty - 1)} disabled={cell.qty <= 0} className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card hover:bg-accent/60 disabled:opacity-30"><Minus className="h-3 w-3" /></button>
+          <input type="number" min={0} value={cell.qty} onChange={(e) => onQty(parseInt(e.target.value, 10) || 0)} className="h-7 w-12 rounded-md border border-border/40 bg-muted/30 text-center text-xs tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" />
+          <button onClick={() => onQty(cell.qty + 1)} className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card hover:bg-accent/60"><Plus className="h-3 w-3" /></button>
+        </div>
+      </div>
+    );
+  }
+  return <ProductPicker products={products} onSelect={onSelect} />;
+}
+
+/** Type-ahead picker: cells can only use products that already exist. */
+function ProductPicker({
+  products,
+  onSelect,
+}: {
+  products: { name: string; image: string | null }[];
+  onSelect: (p: { name: string; image: string | null }) => void;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -280,17 +312,6 @@ function ProductPicker({
     return products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
   }, [query, products]);
 
-  if (value) {
-    return (
-      <div className="flex h-9 items-center justify-between gap-2 rounded-lg border border-border/30 bg-muted/20 px-3">
-        <span className="text-sm font-medium truncate">{value}</span>
-        <button onClick={onClear} title="Clear product" className="shrink-0 text-muted-foreground hover:text-destructive transition-colors">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="relative">
       <Input
@@ -298,11 +319,11 @@ function ProductPicker({
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        placeholder="Type to search products…"
-        className="rounded-lg bg-muted/20 border-border/30 h-9 text-sm"
+        placeholder="Select product…"
+        className="rounded-lg bg-muted/20 border-border/30 h-9 text-xs"
       />
       {open && (
-        <div className="absolute z-20 mt-1 w-full min-w-[220px] rounded-xl border border-border/40 bg-popover shadow-xl max-h-56 overflow-y-auto">
+        <div className="absolute z-20 mt-1 w-full min-w-[200px] rounded-xl border border-border/40 bg-popover shadow-xl max-h-56 overflow-y-auto">
           {matches.length === 0 ? (
             <p className="px-3 py-2.5 text-xs text-muted-foreground">No matching products — create it in Products first.</p>
           ) : (

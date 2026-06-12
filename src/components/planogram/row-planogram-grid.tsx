@@ -8,7 +8,7 @@ import { thumbUrl } from "@/lib/cloudinary";
 export interface RowPlanogramSide {
   label: string;
   columns: number;
-  rows: { description: string; image?: string }[];
+  rows: { description: string; cells: { product: string; image?: string }[] }[];
 }
 
 /**
@@ -89,34 +89,42 @@ export function RowPlanogramGrid({
                   const rowCells = sideRows[ri] ?? [];
                   const total = rowCells.reduce((a, b) => a + b, 0);
                   return (
-                    <tr key={ri} className="border-b border-border/15 last:border-b-0 hover:bg-accent/10">
+                    <tr key={ri} className="border-b border-border/15 last:border-b-0 hover:bg-accent/10 align-top">
                       <td className="px-3 py-2.5 text-center text-[11px] font-bold text-muted-foreground tabular-nums">{ri + 1}</td>
                       <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-2">
-                          {r.image ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={thumbUrl(r.image, 64)} alt="" className="h-8 w-8 rounded-lg object-cover border border-border/40 shrink-0" />
-                          ) : null}
-                          <span className="text-sm font-medium">{r.description || <span className="text-muted-foreground/40">—</span>}</span>
-                        </div>
+                        <span className="text-sm font-medium">{r.description || <span className="text-muted-foreground/40">—</span>}</span>
                       </td>
                       {cols.map((ci) => {
                         const v = rowCells[ci] ?? 0;
+                        const cell = r.cells[ci];
                         return (
                           <td key={ci} className="px-2 py-2.5">
-                            {readOnly ? (
-                              <p className="text-center text-sm tabular-nums">{v}</p>
-                            ) : (
-                              <div className="flex items-center justify-center gap-1">
-                                <button onClick={() => setCell(activeSide, ri, ci, v - 1)} disabled={v <= 0} className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card hover:bg-accent/60 disabled:opacity-30"><Minus className="h-3 w-3" /></button>
-                                <input type="number" min={0} value={v} onChange={(e) => setCell(activeSide, ri, ci, parseInt(e.target.value, 10) || 0)} className="h-7 w-12 rounded-md border border-border/40 bg-muted/30 text-center text-xs tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" />
-                                <button onClick={() => setCell(activeSide, ri, ci, v + 1)} className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card hover:bg-accent/60"><Plus className="h-3 w-3" /></button>
-                              </div>
-                            )}
+                            <div className="flex flex-col items-center gap-1.5">
+                              {cell?.product ? (
+                                <>
+                                  {cell.image ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={thumbUrl(cell.image, 96)} alt="" className="h-11 w-11 rounded-lg object-cover border border-border/40" />
+                                  ) : (
+                                    <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-dashed border-border/40 text-muted-foreground/40"><Box className="h-4 w-4" /></div>
+                                  )}
+                                  <span className="max-w-[110px] truncate text-[10px] font-medium" title={cell.product}>{cell.product}</span>
+                                </>
+                              ) : null}
+                              {readOnly ? (
+                                <p className="text-center text-sm font-bold tabular-nums text-primary">{cell?.product ? `×${v}` : (v || "—")}</p>
+                              ) : (
+                                <div className="flex items-center justify-center gap-1">
+                                  <button onClick={() => setCell(activeSide, ri, ci, v - 1)} disabled={v <= 0} className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card hover:bg-accent/60 disabled:opacity-30"><Minus className="h-3 w-3" /></button>
+                                  <input type="number" min={0} value={v} onChange={(e) => setCell(activeSide, ri, ci, parseInt(e.target.value, 10) || 0)} className="h-7 w-12 rounded-md border border-border/40 bg-muted/30 text-center text-xs tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" />
+                                  <button onClick={() => setCell(activeSide, ri, ci, v + 1)} className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card hover:bg-accent/60"><Plus className="h-3 w-3" /></button>
+                                </div>
+                              )}
+                            </div>
                           </td>
                         );
                       })}
-                      <td className="px-3 py-2.5 text-center text-sm font-bold tabular-nums text-primary">{total}</td>
+                      <td className="px-3 py-2.5 text-center text-sm font-bold tabular-nums text-primary align-middle">{total}</td>
                     </tr>
                   );
                 })}

@@ -56,7 +56,7 @@ export default function CustomPlanogramPage() {
     return () => { on = false; };
   }, [id]);
 
-  const rowTotal = (cells: number[]) => cells.reduce((a, b) => a + b, 0);
+  const rowTotal = (cells: { qty: number }[]) => cells.reduce((a, c) => a + c.qty, 0);
   const sideTotals = pg ? pg.sides.map((s) => s.rows.reduce((a, r) => a + rowTotal(r.cells), 0)) : [];
 
   const doDelete = useCallback(async () => {
@@ -70,14 +70,17 @@ export default function CustomPlanogramPage() {
       .map((s) => {
         const total = s.rows.reduce((a, r) => a + rowTotal(r.cells), 0);
         const colHead = Array.from({ length: s.columns }, (_, i) => `<th class="sl">Col ${i + 1}</th>`).join("");
+        const esc = (v: string) => v.replace(/[&<>]/g, (m) => (m === "&" ? "&amp;" : m === "<" ? "&lt;" : "&gt;"));
+        const cellHtml = (c: { product: string; qty: number }) =>
+          `<td class="cell">${c.product ? `<div class="pn">${esc(c.product)}</div>` : ""}<div class="q">${c.qty}</div></td>`;
         const rows = s.rows
-          .map((r, i) => `<tr><td class="rn">${i + 1}</td><td>${r.description || "—"}</td>${r.cells.map((c) => `<td class="sl">${c}</td>`).join("")}<td class="sl">${rowTotal(r.cells)}</td></tr>`)
+          .map((r, i) => `<tr><td class="rn">${i + 1}</td><td>${esc(r.description) || "—"}</td>${r.cells.map(cellHtml).join("")}<td class="sl">${rowTotal(r.cells)}</td></tr>`)
           .join("");
         return `<h3>${s.label} — ${total} units</h3><table><thead><tr><th>Row</th><th>Description</th>${colHead}<th class="sl">Total</th></tr></thead><tbody>${rows}</tbody></table>`;
       })
       .join("");
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Planogram — ${pg.name}</title>
-<style>@page{size:A4;margin:18mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:"Segoe UI",Arial,sans-serif;font-size:11px;color:#111}header{border-bottom:2px solid #6d28d9;padding-bottom:8px;margin-bottom:16px}.brand{font-size:18px;font-weight:800;color:#6d28d9}.sub{font-size:12px;color:#555;margin-top:2px}h3{margin:16px 0 6px;color:#6d28d9;font-size:13px}table{width:100%;border-collapse:collapse;margin-bottom:8px}th{background:#6d28d9;color:#fff;padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;text-align:left}td{padding:6px 10px;border-bottom:1px solid #e5e7eb}.rn{width:40px;text-align:center;font-weight:700;color:#6d28d9}.sl{text-align:right;font-weight:700;width:70px}</style></head><body>
+<style>@page{size:A4;margin:18mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:"Segoe UI",Arial,sans-serif;font-size:11px;color:#111}header{border-bottom:2px solid #6d28d9;padding-bottom:8px;margin-bottom:16px}.brand{font-size:18px;font-weight:800;color:#6d28d9}.sub{font-size:12px;color:#555;margin-top:2px}h3{margin:16px 0 6px;color:#6d28d9;font-size:13px}table{width:100%;border-collapse:collapse;margin-bottom:8px}th{background:#6d28d9;color:#fff;padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;text-align:left}td{padding:6px 10px;border-bottom:1px solid #e5e7eb}.rn{width:40px;text-align:center;font-weight:700;color:#6d28d9}.sl{text-align:right;font-weight:700;width:70px}.cell{text-align:center;width:90px}.cell .pn{font-size:9px;color:#374151;line-height:1.2}.cell .q{font-weight:700;color:#6d28d9}</style></head><body>
 <header><div class="brand">Wildtouch JMS — Planogram</div><div class="sub">${pg.name} · ${pg.sides.length} sides · ${pg.totalUnits} total units</div></header>
 ${sidesHtml}</body></html>`;
     const win = window.open("", "_blank", "width=900,height=700");
@@ -178,21 +181,30 @@ ${sidesHtml}</body></html>`;
               </thead>
               <tbody>
                 {side.rows.map((r, ri) => (
-                  <tr key={ri} className="border-b border-border/15 last:border-b-0 hover:bg-accent/10">
+                  <tr key={ri} className="border-b border-border/15 last:border-b-0 hover:bg-accent/10 align-top">
                     <td className="px-4 py-3 text-center text-[11px] font-bold text-muted-foreground tabular-nums">{ri + 1}</td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        {r.image ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={thumbUrl(r.image, 64)} alt="" className="h-8 w-8 rounded-lg object-cover border border-border/40 shrink-0" />
-                        ) : null}
-                        <span className="text-sm font-medium">{r.description || <span className="text-muted-foreground/40">—</span>}</span>
-                      </div>
+                      <span className="text-sm font-medium">{r.description || <span className="text-muted-foreground/40">—</span>}</span>
                     </td>
                     {r.cells.map((c, ci) => (
-                      <td key={ci} className="px-3 py-3 text-center text-sm tabular-nums">{c}</td>
+                      <td key={ci} className="px-3 py-3 text-center">
+                        {c.product ? (
+                          <div className="flex flex-col items-center gap-1">
+                            {c.image ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={thumbUrl(c.image, 96)} alt="" className="h-11 w-11 rounded-lg object-cover border border-border/40" />
+                            ) : (
+                              <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-dashed border-border/40 text-muted-foreground/40"><Box className="h-4 w-4" /></div>
+                            )}
+                            <span className="max-w-[110px] truncate text-[10px] font-medium" title={c.product}>{c.product}</span>
+                            <span className="text-xs font-bold tabular-nums text-primary">×{c.qty}</span>
+                          </div>
+                        ) : (
+                          <span className="text-sm tabular-nums text-muted-foreground/40">{c.qty || "—"}</span>
+                        )}
+                      </td>
                     ))}
-                    <td className="px-4 py-3 text-right text-sm font-bold tabular-nums text-primary">{rowTotal(r.cells)}</td>
+                    <td className="px-4 py-3 text-right text-sm font-bold tabular-nums text-primary align-middle">{rowTotal(r.cells)}</td>
                   </tr>
                 ))}
               </tbody>

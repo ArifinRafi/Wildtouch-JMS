@@ -2,12 +2,19 @@
 
 import { useEffect, useState, useCallback } from "react";
 
+export interface CustomPlanogramCell {
+  /** Selected product name (empty if none). */
+  product: string;
+  /** Product image URL (auto-filled from the product). */
+  image: string;
+  /** Quantity of this product in this cell. */
+  qty: number;
+}
 export interface CustomPlanogramRow {
+  /** Free-text row label/note. */
   description: string;
-  /** Per-column quantities. */
-  cells: number[];
-  /** Product image URL. */
-  image?: string;
+  /** Per-column cells (each its own product + qty + image). */
+  cells: CustomPlanogramCell[];
 }
 export interface CustomPlanogramSide {
   label: string;
