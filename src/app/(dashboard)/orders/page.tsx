@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Loader2,
   FileText,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -184,10 +185,10 @@ export default function OrdersPage() {
                         <span className="text-[11px] font-bold text-muted-foreground tabular-nums">{i + 1}</span>
                       </td>
                       <td className="px-5 py-3 align-middle">
-                        <div className="flex items-center gap-2">
+                        <Link href={`/orders/${o.id}`} className="flex items-center gap-2 group/order">
                           <FileText className="h-4 w-4 text-primary shrink-0" />
-                          <span className="text-sm font-mono font-semibold">{o.orderNumber}</span>
-                        </div>
+                          <span className="text-sm font-mono font-semibold group-hover/order:text-primary group-hover/order:underline transition-colors">{o.orderNumber}</span>
+                        </Link>
                         {o.planogram?.name && (
                           <p className="text-[11px] text-muted-foreground mt-0.5 pl-6">{o.planogram.name}</p>
                         )}
@@ -213,7 +214,16 @@ export default function OrdersPage() {
                         </Badge>
                       </td>
                       <td className="px-5 py-3 align-middle">
-                        <div className="flex items-center justify-end">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Link href={`/orders/${o.id}`} title="Open order">
+                            <motion.span
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 transition-colors"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </motion.span>
+                          </Link>
                           <motion.button
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
