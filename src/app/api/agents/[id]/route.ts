@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
+import { requireAdmin, isResponse } from "@/lib/authz";
 import { Agent, serializeAgent } from "@/lib/models/Agent";
 
 export async function PATCH(
@@ -24,6 +25,9 @@ export async function DELETE(
   _request: NextRequest,
   ctx: RouteContext<"/api/agents/[id]">,
 ) {
+  const gate = await requireAdmin();
+  if (isResponse(gate)) return gate;
+
   const { id } = await ctx.params;
   await connectDB();
   const deleted = await Agent.findByIdAndDelete(id).lean();

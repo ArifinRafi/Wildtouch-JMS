@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
+import { requireAdmin, isResponse } from "@/lib/authz";
 import { Client, serializeClient } from "@/lib/models/Client";
 
 export async function GET(
@@ -33,6 +34,9 @@ export async function DELETE(
   _request: NextRequest,
   ctx: RouteContext<"/api/clients/[id]">,
 ) {
+  const gate = await requireAdmin();
+  if (isResponse(gate)) return gate;
+
   const { id } = await ctx.params;
   await connectDB();
   const deleted = await Client.findByIdAndDelete(id).lean();

@@ -1,7 +1,11 @@
 "use client";
 
-import { Bell, Search, Menu, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Bell, Search, Menu, Sparkles, LogOut, Settings } from "lucide-react";
+import Link from "next/link";
+import { signOut } from "next-auth/react";
 import { motion } from "framer-motion";
+import { useRole } from "@/lib/hooks/use-role";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -19,6 +23,16 @@ interface HeaderProps {
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
+  const session = useRole();
+  const [me, setMe] = useState<{ username: string; email: string; role: string } | null>(null);
+  useEffect(() => {
+    fetch("/api/users/me").then((r) => (r.ok ? r.json() : null)).then((d) => d && setMe(d)).catch(() => {});
+  }, []);
+  const username = me?.username ?? session.username;
+  const email = me?.email ?? session.email;
+  const role = me?.role ?? session.role;
+  const isAdmin = (me?.role ?? session.role) === "admin";
+  const initials = (username || "U").slice(0, 2).toUpperCase();
   return (
     <motion.header
       initial={{ y: -20, opacity: 0 }}
@@ -93,7 +107,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
               <Avatar className="h-9 w-9 ring-2 ring-primary/20 ring-offset-2 ring-offset-background">
                 <AvatarFallback className="bg-gradient-to-br from-primary to-purple-600 text-white text-sm font-semibold">
-                  AD
+                  {initials}
                 </AvatarFallback>
               </Avatar>
             </motion.div>
@@ -101,18 +115,23 @@ export function Header({ onMenuClick }: HeaderProps) {
           <DropdownMenuContent align="end" className="w-56 glass-strong bg-popover/95 border-border/40 rounded-2xl p-1">
             <DropdownMenuLabel className="px-3 py-2">
               <div className="flex flex-col space-y-0.5">
-                <p className="text-sm font-semibold">Admin User</p>
-                <p className="text-xs text-muted-foreground">
-                  admin@wildtouch.co.uk
-                </p>
+                <p className="text-sm font-semibold capitalize">{username || "User"}</p>
+                <p className="text-xs text-muted-foreground">{email}</p>
+                <span className={`mt-1 inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isAdmin ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-600 dark:text-amber-400"}`}>
+                  {role}
+                </span>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator className="opacity-30" />
-            <DropdownMenuItem className="rounded-xl cursor-pointer">Profile Settings</DropdownMenuItem>
-            <DropdownMenuItem className="rounded-xl cursor-pointer">System Settings</DropdownMenuItem>
+            <DropdownMenuItem className="rounded-xl cursor-pointer" render={<Link href="/settings" />}>
+              <Settings className="h-4 w-4 mr-2" /> Settings
+            </DropdownMenuItem>
             <DropdownMenuSeparator className="opacity-30" />
-            <DropdownMenuItem className="rounded-xl cursor-pointer text-destructive">
-              Log out
+            <DropdownMenuItem
+              className="rounded-xl cursor-pointer text-destructive"
+              onClick={() => signOut({ callbackUrl: "/login" })}
+            >
+              <LogOut className="h-4 w-4 mr-2" /> Log out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

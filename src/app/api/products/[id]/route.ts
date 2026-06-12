@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isValidObjectId } from "mongoose";
 import { connectDB } from "@/lib/db";
+import { requireAdmin, isResponse } from "@/lib/authz";
 import { Product, serializeProduct } from "@/lib/models/Product";
 
 export async function GET(
@@ -51,6 +52,9 @@ export async function DELETE(
   _request: NextRequest,
   ctx: RouteContext<"/api/products/[id]">,
 ) {
+  const gate = await requireAdmin();
+  if (isResponse(gate)) return gate;
+
   const { id } = await ctx.params;
   if (!isValidObjectId(id)) {
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
