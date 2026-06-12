@@ -12,7 +12,6 @@ import type { CatalogItem } from "@/lib/data/inventory/catalog";
 import type { InventoryComponent } from "@/lib/data/inventory/types";
 
 export interface NewComponentInput {
-  category: string; // category display name
   description: string;
   code: string;
   qtyAvailable: number;

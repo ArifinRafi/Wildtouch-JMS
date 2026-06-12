@@ -20,8 +20,6 @@ export async function POST(request: NextRequest) {
   const docs = getAllCatalogItems().map((it) => ({
     description: it.description,
     code: it.code,
-    category: it.category,
-    slug: it.slug,
     components: it.components,
     qtyAvailable: it.qtyAvailable,
   }));

@@ -12,8 +12,6 @@ const ComponentSchema = new Schema(
   {
     description: { type: String, default: "" },
     code: { type: String, default: "" },
-    category: { type: String, required: true },
-    slug: { type: String, required: true, index: true },
     components: { type: [ComponentPartSchema], default: [] },
     qtyAvailable: { type: Number, default: 0, min: 0 },
   },
@@ -42,15 +40,11 @@ export function serializeComponent(doc: {
   _id: unknown;
   description?: string;
   code?: string;
-  category: string;
-  slug: string;
   components?: { label?: string; code?: string }[];
   qtyAvailable?: number;
 }) {
   return {
     id: String(doc._id),
-    category: doc.category,
-    slug: doc.slug,
     description: doc.description ?? "",
     code: doc.code ?? "",
     qtyAvailable: doc.qtyAvailable ?? 0,

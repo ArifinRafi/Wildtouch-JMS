@@ -19,8 +19,6 @@ export async function PATCH(
   const patch: Record<string, unknown> = {};
   if (body.description !== undefined) patch.description = String(body.description).trim();
   if (body.code !== undefined) patch.code = String(body.code).trim();
-  if (body.category !== undefined) patch.category = String(body.category).trim();
-  if (body.slug !== undefined) patch.slug = String(body.slug);
   if (body.qtyAvailable !== undefined) {
     patch.qtyAvailable = Math.max(0, Number(body.qtyAvailable) || 0);
   }

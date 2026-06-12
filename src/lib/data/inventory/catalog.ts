@@ -38,8 +38,8 @@ export const INVENTORY_DATASETS: InventoryDataset[] = [
 export interface CatalogItem extends InventoryItem {
   /** Stable unique id: "<slug>-<index>" */
   id: string;
-  category: string;
-  slug: string;
+  category?: string;
+  slug?: string;
 }
 
 /** Flatten every dataset into one tagged, id'd list. */

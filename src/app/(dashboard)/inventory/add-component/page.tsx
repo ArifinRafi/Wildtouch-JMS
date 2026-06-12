@@ -16,19 +16,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { CATEGORY_NAMES } from "@/lib/data/inventory/catalog";
 import type { InventoryComponent } from "@/lib/data/inventory/types";
 import { useInventory } from "@/lib/store/inventory-store";
 
 interface AddForm {
-  category: string;
   description: string;
   code: string;
   qtyAvailable: string;
@@ -36,7 +27,6 @@ interface AddForm {
 }
 
 const emptyForm = (): AddForm => ({
-  category: "",
   description: "",
   code: "",
   qtyAvailable: "0",
@@ -70,12 +60,8 @@ export default function AddComponentPage() {
   const [saving, setSaving] = useState(false);
 
   const handleSave = useCallback(async () => {
-    if (!form.category) {
-      setError("Please choose a category.");
-      return;
-    }
     if (!form.description.trim()) {
-      setError("Product description is required.");
+      setError("Component name is required.");
       return;
     }
     setError("");
@@ -87,7 +73,6 @@ export default function AddComponentPage() {
     setSaving(true);
     try {
       await addItem({
-        category: form.category,
         description: form.description.trim(),
         code: form.code.trim(),
         qtyAvailable: qty,
@@ -149,41 +134,21 @@ export default function AddComponentPage() {
         </div>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Category *
-              </Label>
-              <Select value={form.category} onValueChange={(v) => v && setField("category", v)}>
-                <SelectTrigger className={inputCls}>
-                  <SelectValue placeholder="Select a category" />
-                </SelectTrigger>
-                <SelectContent className="max-h-[300px]">
-                  {CATEGORY_NAMES.map((name) => (
-                    <SelectItem key={name} value={name}>
-                      {name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Finished Code
-              </Label>
-              <Input
-                className={`${inputCls} font-mono`}
-                placeholder="e.g. BC01"
-                value={form.code}
-                onChange={(e) => setField("code", e.target.value)}
-              />
-            </div>
+          <div className="space-y-1.5 max-w-[280px]">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Code
+            </Label>
+            <Input
+              className={`${inputCls} font-mono`}
+              placeholder="e.g. BC01"
+              value={form.code}
+              onChange={(e) => setField("code", e.target.value)}
+            />
           </div>
 
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Product Description *
+              Component Name *
             </Label>
             <Input
               className={inputCls}

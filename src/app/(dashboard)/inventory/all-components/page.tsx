@@ -16,13 +16,10 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
-  Filter,
-  ChevronDown,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -30,14 +27,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { CATEGORY_NAMES, type CatalogItem } from "@/lib/data/inventory/catalog";
+import { type CatalogItem } from "@/lib/data/inventory/catalog";
 import type { InventoryComponent } from "@/lib/data/inventory/types";
 import { useInventory } from "@/lib/store/inventory-store";
 
@@ -52,7 +43,6 @@ function qtyClass(qty: number) {
 interface EditForm {
   description: string;
   code: string;
-  category: string;
   qtyAvailable: string;
   components: InventoryComponent[];
 }
@@ -62,7 +52,6 @@ export default function AllComponentsPage() {
   const { items, updateItem, deleteItem } = useInventory();
 
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [page, setPage] = useState(0);
 
   // Edit dialog
@@ -75,23 +64,19 @@ export default function AllComponentsPage() {
   // ── Filtering ──
   const filtered = useMemo(() => {
     let list = items;
-    if (categoryFilter !== "all") {
-      list = list.filter((it) => it.category === categoryFilter);
-    }
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
         (it) =>
           it.description.toLowerCase().includes(q) ||
           it.code.toLowerCase().includes(q) ||
-          it.category.toLowerCase().includes(q) ||
           it.components.some(
             (c) => c.code.toLowerCase().includes(q) || c.label.toLowerCase().includes(q),
           ),
       );
     }
     return list;
-  }, [items, search, categoryFilter]);
+  }, [items, search]);
 
   // ── Pagination ──
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -100,7 +85,6 @@ export default function AllComponentsPage() {
 
   // Reset to first page when filters change
   const onSearch = (v: string) => { setSearch(v); setPage(0); };
-  const onCategory = (v: string) => { setCategoryFilter(v); setPage(0); };
 
   // ── Stats (full set) ──
   const totalQty = useMemo(() => items.reduce((s, it) => s + it.qtyAvailable, 0), [items]);
@@ -113,7 +97,6 @@ export default function AllComponentsPage() {
     setForm({
       description: it.description,
       code: it.code,
-      category: it.category,
       qtyAvailable: String(it.qtyAvailable),
       components: it.components.map((c) => ({ ...c })),
     });
@@ -215,41 +198,12 @@ export default function AllComponentsPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
           <Input
-            placeholder="Search description, code, component, category..."
+            placeholder="Search component name, code, parts..."
             value={search}
             onChange={(e) => onSearch(e.target.value)}
             className="pl-9 rounded-xl bg-card/70 glass border-border/40"
           />
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger className="flex items-center gap-2 rounded-xl border border-border/40 bg-card/70 glass px-4 py-2 text-sm font-medium hover:bg-accent/40 transition-colors focus-visible:outline-none min-w-[200px] justify-between">
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <span>{categoryFilter === "all" ? "All Categories" : categoryFilter}</span>
-            </div>
-            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            className="w-56 glass-strong bg-popover/95 border-border/40 rounded-2xl p-1 max-h-[320px] overflow-y-auto"
-          >
-            <DropdownMenuItem
-              onClick={() => onCategory("all")}
-              className={cn("rounded-xl cursor-pointer text-sm", categoryFilter === "all" && "bg-primary/10 text-primary font-semibold")}
-            >
-              All Categories
-            </DropdownMenuItem>
-            {CATEGORY_NAMES.map((name) => (
-              <DropdownMenuItem
-                key={name}
-                onClick={() => onCategory(name)}
-                className={cn("rounded-xl cursor-pointer text-sm", categoryFilter === name && "bg-primary/10 text-primary font-semibold")}
-              >
-                {name}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
       </motion.div>
 
       {/* Table */}
@@ -264,9 +218,8 @@ export default function AllComponentsPage() {
             <thead>
               <tr className="border-b border-border/30 bg-muted/20">
                 <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-12">#</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Category</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Product Description</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Finished Code</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Component Name</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Code</th>
                 <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Components</th>
                 <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Qty Available</th>
                 <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
@@ -276,7 +229,7 @@ export default function AllComponentsPage() {
               <AnimatePresence mode="popLayout">
                 {pageItems.length === 0 ? (
                   <tr key="empty">
-                    <td colSpan={7}>
+                    <td colSpan={6}>
                       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                         <Package className="h-10 w-10 mb-3 opacity-20" />
                         <p className="text-sm font-medium">No components match your search</p>
@@ -301,19 +254,7 @@ export default function AllComponentsPage() {
                         </span>
                       </td>
 
-                      {/* Category */}
-                      <td className="px-4 py-3 align-middle">
-                        <Link href={`/inventory/${it.slug}`}>
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] border-primary/20 bg-primary/5 text-primary hover:bg-primary/15 transition-colors cursor-pointer"
-                          >
-                            {it.category}
-                          </Badge>
-                        </Link>
-                      </td>
-
-                      {/* Description */}
+                      {/* Component name */}
                       <td className="px-4 py-3 align-middle">
                         <div className="flex items-center gap-3">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 border border-primary/15">
@@ -441,14 +382,8 @@ export default function AllComponentsPage() {
 
           {form && (
             <div className="space-y-4 overflow-y-auto pr-1">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-[10px] border-primary/20 bg-primary/5 text-primary">
-                  {form.category}
-                </Badge>
-              </div>
-
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Description</Label>
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Component Name</Label>
                 <Input
                   className="rounded-xl bg-muted/30 border-border/40"
                   value={form.description}
@@ -458,7 +393,7 @@ export default function AllComponentsPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Finished Code</Label>
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Code</Label>
                   <Input
                     className="rounded-xl bg-muted/30 border-border/40 font-mono"
                     value={form.code}
@@ -552,15 +487,11 @@ export default function AllComponentsPage() {
           {toDelete && (
             <div className="rounded-xl border border-border/40 bg-muted/20 px-4 py-3">
               <p className="text-sm font-semibold">{toDelete.description || "—"}</p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-[10px] text-muted-foreground">{toDelete.category}</span>
-                {toDelete.code && (
-                  <>
-                    <span className="text-[10px] text-muted-foreground">·</span>
-                    <span className="text-[10px] font-mono text-muted-foreground">{toDelete.code}</span>
-                  </>
-                )}
-              </div>
+              {toDelete.code && (
+                <div className="mt-1">
+                  <span className="text-[10px] font-mono text-muted-foreground">{toDelete.code}</span>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter className="gap-2 sm:gap-2">
