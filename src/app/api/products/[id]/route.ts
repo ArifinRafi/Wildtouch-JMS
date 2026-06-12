@@ -32,6 +32,7 @@ export async function PATCH(
   if (body.name !== undefined) patch.name = String(body.name).trim();
   if (body.segment !== undefined) patch.segment = String(body.segment).trim();
   if (body.code !== undefined) patch.code = String(body.code).trim();
+  if (body.image !== undefined) patch.image = body.image ? String(body.image) : null;
   if (body.defaultQty !== undefined) patch.defaultQty = Math.max(0, Number(body.defaultQty) || 0);
   if (Array.isArray(body.components)) {
     patch.components = body.components.map((c: { code?: string; label?: string; qtyPerUnit?: number }) => ({

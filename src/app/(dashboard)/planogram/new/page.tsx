@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -15,14 +15,14 @@ import {
   Wand2,
   X,
   Columns3,
-  ImagePlus,
-  Loader2,
+  Package,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { uploadImage, thumbUrl, getUploadConfig } from "@/lib/cloudinary";
+import { thumbUrl } from "@/lib/cloudinary";
+import { useProducts } from "@/lib/hooks/use-products";
 
 interface RowState { description: string; cells: number[]; image: string }
 interface SideState { label: string; columns: number; rows: RowState[] }
@@ -39,12 +39,11 @@ export default function NewPlanogramPage() {
   const [active, setActive] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [uploading, setUploading] = useState<Record<string, boolean>>({});
-  const [imgConfigured, setImgConfigured] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    getUploadConfig().then((c) => setImgConfigured(c.configured)).catch(() => setImgConfigured(false));
-  }, []);
+  const { products } = useProducts();
+  const productOptions = useMemo(
+    () => products.map((p) => ({ name: p.name, image: p.image })),
+    [products],
+  );
 
   const inputCls = "rounded-xl bg-muted/30 border-border/40";
 
@@ -68,28 +67,14 @@ export default function NewPlanogramPage() {
   const mutateSide = (fn: (s: SideState) => SideState) =>
     setSides((prev) => prev.map((s, i) => (i === active ? fn(s) : s)));
 
-  const setDesc = (ri: number, v: string) =>
-    mutateSide((s) => ({ ...s, rows: s.rows.map((r, i) => (i === ri ? { ...r, description: v } : r)) }));
   const setCell = (ri: number, ci: number, v: number) =>
     mutateSide((s) => ({ ...s, rows: s.rows.map((r, i) => (i === ri ? { ...r, cells: r.cells.map((c, j) => (j === ci ? Math.max(0, v) : c)) } : r)) }));
   const addRow = () =>
     mutateSide((s) => ({ ...s, rows: [...s.rows, { description: "", cells: Array(s.columns).fill(1), image: "" }] }));
-  const setImage = (ri: number, url: string) =>
-    mutateSide((s) => ({ ...s, rows: s.rows.map((r, i) => (i === ri ? { ...r, image: url } : r)) }));
-  const handleUpload = async (ri: number, file: File | undefined) => {
-    if (!file) return;
-    const key = `${active}:${ri}`;
-    setUploading((u) => ({ ...u, [key]: true }));
-    setError("");
-    try {
-      const url = await uploadImage(file);
-      setImage(ri, url);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Image upload failed.");
-    } finally {
-      setUploading((u) => ({ ...u, [key]: false }));
-    }
-  };
+  const setRowProduct = (ri: number, name: string, image: string) =>
+    mutateSide((s) => ({ ...s, rows: s.rows.map((r, i) => (i === ri ? { ...r, description: name, image } : r)) }));
+  const clearRowProduct = (ri: number) =>
+    mutateSide((s) => ({ ...s, rows: s.rows.map((r, i) => (i === ri ? { ...r, description: "", image: "" } : r)) }));
   const removeRow = (ri: number) =>
     mutateSide((s) => ({ ...s, rows: s.rows.filter((_, i) => i !== ri) }));
   const addColumn = () =>
@@ -185,12 +170,6 @@ export default function NewPlanogramPage() {
             ))}
           </div>
 
-          {imgConfigured === false && (
-            <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-lg px-3 py-2 border border-amber-500/20">
-              Image upload isn&rsquo;t configured yet — set the Cloudinary env vars to enable per-product images.
-            </p>
-          )}
-
           {/* Grid */}
           <AnimatePresence mode="wait">
             <motion.div key={active} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2 }}
@@ -223,24 +202,22 @@ export default function NewPlanogramPage() {
                         <td className="px-2 py-2">
                           <div className="flex justify-center">
                             {r.image ? (
-                              <div className="relative group">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={thumbUrl(r.image, 80)} alt="" className="h-10 w-10 rounded-lg object-cover border border-border/40" />
-                                <button onClick={() => setImage(ri, "")} title="Remove image"
-                                  className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <X className="h-2.5 w-2.5" />
-                                </button>
-                              </div>
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={thumbUrl(r.image, 80)} alt="" className="h-10 w-10 rounded-lg object-cover border border-border/40" />
                             ) : (
-                              <label className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-dashed border-border/50 text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors" title="Upload image">
-                                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUpload(ri, e.target.files?.[0])} />
-                                {uploading[`${active}:${ri}`] ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                              </label>
+                              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-dashed border-border/40 text-muted-foreground/40" title="Image comes from the selected product">
+                                <Package className="h-4 w-4" />
+                              </div>
                             )}
                           </div>
                         </td>
                         <td className="px-3 py-2">
-                          <Input value={r.description} onChange={(e) => setDesc(ri, e.target.value)} placeholder="Product name…" className="rounded-lg bg-muted/20 border-border/30 h-9 text-sm" />
+                          <ProductPicker
+                            value={r.description}
+                            products={productOptions}
+                            onSelect={(p) => setRowProduct(ri, p.name, p.image ?? "")}
+                            onClear={() => clearRowProduct(ri)}
+                          />
                         </td>
                         {r.cells.map((v, ci) => (
                           <td key={ci} className="px-2 py-2">
@@ -277,6 +254,76 @@ export default function NewPlanogramPage() {
             </Button>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+/** Type-ahead picker: planogram rows can only use products that already exist. */
+function ProductPicker({
+  value,
+  products,
+  onSelect,
+  onClear,
+}: {
+  value: string;
+  products: { name: string; image: string | null }[];
+  onSelect: (p: { name: string; image: string | null }) => void;
+  onClear: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return products.slice(0, 8);
+    return products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [query, products]);
+
+  if (value) {
+    return (
+      <div className="flex h-9 items-center justify-between gap-2 rounded-lg border border-border/30 bg-muted/20 px-3">
+        <span className="text-sm font-medium truncate">{value}</span>
+        <button onClick={onClear} title="Clear product" className="shrink-0 text-muted-foreground hover:text-destructive transition-colors">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <Input
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Type to search products…"
+        className="rounded-lg bg-muted/20 border-border/30 h-9 text-sm"
+      />
+      {open && (
+        <div className="absolute z-20 mt-1 w-full min-w-[220px] rounded-xl border border-border/40 bg-popover shadow-xl max-h-56 overflow-y-auto">
+          {matches.length === 0 ? (
+            <p className="px-3 py-2.5 text-xs text-muted-foreground">No matching products — create it in Products first.</p>
+          ) : (
+            matches.map((p) => (
+              <button
+                key={p.name}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { onSelect(p); setQuery(""); setOpen(false); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent/40 transition-colors border-b border-border/10 last:border-b-0"
+              >
+                {p.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={thumbUrl(p.image, 48)} alt="" className="h-6 w-6 rounded object-cover border border-border/30 shrink-0" />
+                ) : (
+                  <Package className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                )}
+                <span className="truncate">{p.name}</span>
+              </button>
+            ))
+          )}
+        </div>
       )}
     </div>
   );

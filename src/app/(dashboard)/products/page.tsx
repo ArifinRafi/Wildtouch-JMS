@@ -15,6 +15,7 @@ import {
   Minus,
   X,
   Loader2,
+  ImagePlus,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -30,12 +31,13 @@ import {
 import { cn } from "@/lib/utils";
 import { useProducts, type CatalogProduct } from "@/lib/hooks/use-products";
 import { useInventory } from "@/lib/store/inventory-store";
+import { uploadImage, thumbUrl } from "@/lib/cloudinary";
 
 const PAGE_SIZE = 50;
 
 interface ProductComponentRow { code: string; label: string; qtyPerUnit: number }
-interface ProductForm { name: string; code: string; components: ProductComponentRow[] }
-const emptyForm = (): ProductForm => ({ name: "", code: "", components: [] });
+interface ProductForm { name: string; code: string; image: string; components: ProductComponentRow[] }
+const emptyForm = (): ProductForm => ({ name: "", code: "", image: "", components: [] });
 
 export default function ProductsPage() {
   const { products, loading, createProduct, updateProduct, deleteProduct } = useProducts();
@@ -49,6 +51,22 @@ export default function ProductsPage() {
   const [form, setForm] = useState<ProductForm>(emptyForm());
   const [compSearch, setCompSearch] = useState("");
   const [toDelete, setToDelete] = useState<CatalogProduct | null>(null);
+  const [uploadingImg, setUploadingImg] = useState(false);
+  const [imgError, setImgError] = useState("");
+
+  const handleImageUpload = async (file: File | undefined) => {
+    if (!file) return;
+    setUploadingImg(true);
+    setImgError("");
+    try {
+      const url = await uploadImage(file);
+      setForm((f) => ({ ...f, image: url }));
+    } catch (e) {
+      setImgError(e instanceof Error ? e.message : "Image upload failed.");
+    } finally {
+      setUploadingImg(false);
+    }
+  };
 
   const dialogOpen = adding || !!editing;
 
@@ -82,6 +100,7 @@ export default function ProductsPage() {
     setForm({
       name: p.name,
       code: p.code,
+      image: p.image ?? "",
       components: p.components.map((c) => ({ code: c.code, label: c.label || c.code, qtyPerUnit: c.qtyPerUnit || 1 })),
     });
   }, []);
@@ -95,7 +114,12 @@ export default function ProductsPage() {
     setForm((f) => ({ ...f, components: f.components.map((c) => (c.code === code ? { ...c, qtyPerUnit: Math.max(1, qty) } : c)) }));
 
   const submit = useCallback(async () => {
-    const payload = { name: form.name.trim(), code: form.code.trim(), components: form.components };
+    const payload = {
+      name: form.name.trim(),
+      code: form.code.trim(),
+      image: form.image.trim() || null,
+      components: form.components,
+    };
     if (!payload.name) return;
     if (editing) await updateProduct(editing.id, payload);
     else await createProduct(payload);
@@ -175,7 +199,15 @@ export default function ProductsPage() {
                         transition={{ duration: 0.15, delay: Math.min(i, 12) * 0.01 }}
                         className="border-b border-border/20 hover:bg-accent/20 transition-colors last:border-b-0">
                         <td className="px-4 py-3 text-[11px] font-bold text-muted-foreground tabular-nums">{safePage * PAGE_SIZE + i + 1}</td>
-                        <td className="px-4 py-3 text-sm font-medium">{p.name}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 border border-primary/15 overflow-hidden">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              {p.image ? <img src={thumbUrl(p.image, 72)} alt="" className="h-full w-full object-cover" /> : <Package className="h-4 w-4 text-primary" />}
+                            </div>
+                            <p className="text-sm font-medium">{p.name}</p>
+                          </div>
+                        </td>
                         <td className="px-4 py-3">
                           {p.code ? <span className="inline-flex items-center rounded-md bg-muted/50 border border-border/40 px-2 py-0.5 text-xs font-mono font-semibold">{p.code}</span> : <span className="text-xs text-muted-foreground/40">—</span>}
                         </td>
@@ -236,6 +268,32 @@ export default function ProductsPage() {
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Code</Label>
                 <Input className="rounded-xl bg-muted/30 border-border/40 font-mono" placeholder="e.g. BC01" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} />
               </div>
+            </div>
+
+            {/* Product image */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Image</Label>
+              {imgError && <p className="text-[11px] text-destructive">{imgError}</p>}
+              {form.image ? (
+                <div className="flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={thumbUrl(form.image, 160)} alt="" className="h-16 w-16 rounded-xl object-cover border border-border/40" />
+                  <label className="cursor-pointer rounded-xl border border-border/40 bg-card px-3 py-1.5 text-xs font-semibold hover:bg-accent/60 transition-colors">
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e.target.files?.[0])} />
+                    {uploadingImg ? "Uploading…" : "Change"}
+                  </label>
+                  <button onClick={() => setForm((f) => ({ ...f, image: "" }))}
+                    className="rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/20 transition-colors">
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <label className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border/50 bg-muted/10 px-4 py-4 text-sm text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors">
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e.target.files?.[0])} />
+                  {uploadingImg ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                  {uploadingImg ? "Uploading…" : "Upload product image"}
+                </label>
+              )}
             </div>
 
             {/* Components builder */}
