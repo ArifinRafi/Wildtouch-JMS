@@ -7,30 +7,25 @@ import { motion } from "framer-motion";
 import {
   ArrowLeft,
   PackagePlus,
-  Plus,
   X,
   Save,
-  Boxes,
   Tag,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import type { InventoryComponent } from "@/lib/data/inventory/types";
 import { useInventory } from "@/lib/store/inventory-store";
 
 interface AddForm {
   description: string;
   code: string;
   qtyAvailable: string;
-  components: InventoryComponent[];
 }
 
 const emptyForm = (): AddForm => ({
   description: "",
   code: "",
   qtyAvailable: "0",
-  components: [],
 });
 
 export default function AddComponentPage() {
@@ -45,17 +40,6 @@ export default function AddComponentPage() {
   const setField = (key: keyof AddForm, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  // ── Components editor ──
-  const addComp = () =>
-    setForm((f) => ({ ...f, components: [...f.components, { label: "", code: "" }] }));
-  const removeComp = (idx: number) =>
-    setForm((f) => ({ ...f, components: f.components.filter((_, i) => i !== idx) }));
-  const updateComp = (idx: number, key: keyof InventoryComponent, value: string) =>
-    setForm((f) => ({
-      ...f,
-      components: f.components.map((c, i) => (i === idx ? { ...c, [key]: value } : c)),
-    }));
-
   // ── Save ──
   const [saving, setSaving] = useState(false);
 
@@ -66,9 +50,6 @@ export default function AddComponentPage() {
     }
     setError("");
     const qty = Math.max(0, parseInt(form.qtyAvailable, 10) || 0);
-    const cleanedComps = form.components
-      .map((c) => ({ label: c.label.trim(), code: c.code.trim() }))
-      .filter((c) => c.label || c.code);
 
     setSaving(true);
     try {
@@ -76,7 +57,7 @@ export default function AddComponentPage() {
         description: form.description.trim(),
         code: form.code.trim(),
         qtyAvailable: qty,
-        components: cleanedComps,
+        components: [],
       });
       router.push("/inventory/all-components");
     } catch {
@@ -172,65 +153,6 @@ export default function AddComponentPage() {
             />
           </div>
         </div>
-      </motion.div>
-
-      {/* Components */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.05 }}
-        className="rounded-2xl border border-border/40 bg-card/70 glass p-5"
-      >
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Boxes className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold">Components</h3>
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="rounded-xl gap-1.5 border-border/40"
-            onClick={addComp}
-          >
-            <Plus className="h-3.5 w-3.5" /> Add
-          </Button>
-        </div>
-
-        {form.components.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/40 bg-muted/10 px-4 py-6 text-center">
-            <p className="text-xs text-muted-foreground">
-              No components added. Click &ldquo;Add&rdquo; to include parts (chain, jump ring, pendant…).
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {form.components.map((c, idx) => (
-              <div key={idx} className="flex items-center gap-2">
-                <Input
-                  placeholder="Label (e.g. Pendant)"
-                  className={`${inputCls} text-sm`}
-                  value={c.label}
-                  onChange={(e) => updateComp(idx, "label", e.target.value)}
-                />
-                <Input
-                  placeholder="Code"
-                  className={`${inputCls} text-sm font-mono w-32`}
-                  value={c.code}
-                  onChange={(e) => updateComp(idx, "code", e.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={() => removeComp(idx)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-                  title="Remove component"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
       </motion.div>
 
       {/* Footer actions */}
