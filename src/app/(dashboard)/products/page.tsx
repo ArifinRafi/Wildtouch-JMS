@@ -35,7 +35,7 @@ import { uploadImage, thumbUrl } from "@/lib/cloudinary";
 
 const PAGE_SIZE = 50;
 
-interface ProductComponentRow { code: string; label: string; qtyPerUnit: number }
+interface ProductComponentRow { code: string; label: string; qtyPerUnit: number; componentId?: string }
 interface ProductForm { name: string; code: string; image: string; components: ProductComponentRow[] }
 const emptyForm = (): ProductForm => ({ name: "", code: "", image: "", components: [] });
 
@@ -85,10 +85,11 @@ export default function ProductsPage() {
 
   // Inventory components available to add (excluding ones already on the form)
   const availableComponents = useMemo(() => {
-    const chosen = new Set(form.components.map((c) => c.code));
+    const chosenIds = new Set(form.components.map((c) => c.componentId).filter(Boolean));
+    const chosenCodes = new Set(form.components.map((c) => c.code).filter(Boolean));
     const q = compSearch.trim().toLowerCase();
     return inventory
-      .filter((it) => !chosen.has(it.code))
+      .filter((it) => !chosenIds.has(it.id) && !chosenCodes.has(it.code))
       .filter((it) => !q || it.description.toLowerCase().includes(q) || it.code.toLowerCase().includes(q))
       .slice(0, 30);
   }, [inventory, form.components, compSearch]);
@@ -101,24 +102,24 @@ export default function ProductsPage() {
       name: p.name,
       code: p.code,
       image: p.image ?? "",
-      components: p.components.map((c) => ({ code: c.code, label: c.label || c.code, qtyPerUnit: c.qtyPerUnit || 1 })),
+      components: p.components.map((c) => ({ code: c.code, label: c.label || c.code, qtyPerUnit: c.qtyPerUnit || 1, componentId: inventory.find((it) => it.code && it.code === c.code)?.id })),
     });
-  }, []);
+  }, [inventory]);
   const closeDialogs = () => { setEditing(null); setAdding(false); setForm(emptyForm()); setCompSearch(""); };
 
-  const addComponent = (code: string, label: string) =>
-    setForm((f) => ({ ...f, components: [...f.components, { code, label, qtyPerUnit: 1 }] }));
-  const removeComponent = (code: string) =>
-    setForm((f) => ({ ...f, components: f.components.filter((c) => c.code !== code) }));
-  const setComponentQty = (code: string, qty: number) =>
-    setForm((f) => ({ ...f, components: f.components.map((c) => (c.code === code ? { ...c, qtyPerUnit: Math.max(1, qty) } : c)) }));
+  const addComponent = (row: ProductComponentRow) =>
+    setForm((f) => ({ ...f, components: [...f.components, row] }));
+  const removeComponent = (idx: number) =>
+    setForm((f) => ({ ...f, components: f.components.filter((_, i) => i !== idx) }));
+  const setComponentQty = (idx: number, qty: number) =>
+    setForm((f) => ({ ...f, components: f.components.map((c, i) => (i === idx ? { ...c, qtyPerUnit: Math.max(1, qty) } : c)) }));
 
   const submit = useCallback(async () => {
     const payload = {
       name: form.name.trim(),
       code: form.code.trim(),
       image: form.image.trim() || null,
-      components: form.components,
+      components: form.components.map((c) => ({ code: c.code, label: c.label, qtyPerUnit: c.qtyPerUnit })),
     };
     if (!payload.name) return;
     if (editing) await updateProduct(editing.id, payload);
@@ -303,18 +304,18 @@ export default function ProductsPage() {
               {/* Selected components */}
               {form.components.length > 0 ? (
                 <div className="space-y-1.5">
-                  {form.components.map((c) => (
-                    <div key={c.code} className="flex items-center gap-2 rounded-xl border border-border/40 bg-muted/20 px-3 py-2">
+                  {form.components.map((c, idx) => (
+                    <div key={c.componentId ?? `${c.code}-${idx}`} className="flex items-center gap-2 rounded-xl border border-border/40 bg-muted/20 px-3 py-2">
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium truncate">{c.label}</p>
-                        <p className="text-[10px] font-mono text-muted-foreground">{c.code}</p>
+                        {c.code && <p className="text-[10px] font-mono text-muted-foreground">{c.code}</p>}
                       </div>
                       <div className="flex items-center gap-1">
-                        <button onClick={() => setComponentQty(c.code, c.qtyPerUnit - 1)} disabled={c.qtyPerUnit <= 1} className="flex h-7 w-7 items-center justify-center rounded-lg border border-border/40 bg-card hover:bg-accent/60 disabled:opacity-30"><Minus className="h-3.5 w-3.5" /></button>
-                        <input type="number" min={1} value={c.qtyPerUnit} onChange={(e) => setComponentQty(c.code, parseInt(e.target.value, 10) || 1)} className="h-8 w-14 rounded-lg border border-border/40 bg-card text-center text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" />
-                        <button onClick={() => setComponentQty(c.code, c.qtyPerUnit + 1)} className="flex h-7 w-7 items-center justify-center rounded-lg border border-border/40 bg-card hover:bg-accent/60"><Plus className="h-3.5 w-3.5" /></button>
+                        <button onClick={() => setComponentQty(idx, c.qtyPerUnit - 1)} disabled={c.qtyPerUnit <= 1} className="flex h-7 w-7 items-center justify-center rounded-lg border border-border/40 bg-card hover:bg-accent/60 disabled:opacity-30"><Minus className="h-3.5 w-3.5" /></button>
+                        <input type="text" inputMode="numeric" value={c.qtyPerUnit} onChange={(e) => setComponentQty(idx, parseInt(e.target.value.replace(/\D/g, ""), 10) || 1)} className="h-8 w-14 rounded-lg border border-border/40 bg-card text-center text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" />
+                        <button onClick={() => setComponentQty(idx, c.qtyPerUnit + 1)} className="flex h-7 w-7 items-center justify-center rounded-lg border border-border/40 bg-card hover:bg-accent/60"><Plus className="h-3.5 w-3.5" /></button>
                       </div>
-                      <button onClick={() => removeComponent(c.code)} title="Remove" className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><X className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => removeComponent(idx)} title="Remove component" className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><X className="h-3.5 w-3.5" /></button>
                     </div>
                   ))}
                 </div>
@@ -333,11 +334,11 @@ export default function ProductsPage() {
                     <p className="px-3 py-4 text-center text-xs text-muted-foreground">{compSearch ? "No matching components" : "Type to search components"}</p>
                   ) : (
                     availableComponents.map((it) => (
-                      <button key={it.id} onClick={() => addComponent(it.code, it.description)}
+                      <button key={it.id} onClick={() => addComponent({ code: it.code, label: it.description, qtyPerUnit: 1, componentId: it.id })}
                         className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-accent/40 transition-colors border-b border-border/15 last:border-b-0">
                         <span className="text-sm truncate">{it.description}</span>
                         <span className="flex items-center gap-2 shrink-0">
-                          <span className="text-[10px] font-mono text-muted-foreground">{it.code}</span>
+                          {it.code && <span className="text-[10px] font-mono text-muted-foreground">{it.code}</span>}
                           <Plus className="h-3.5 w-3.5 text-primary" />
                         </span>
                       </button>
