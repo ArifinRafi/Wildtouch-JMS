@@ -12,11 +12,13 @@ import {
   ImageOff,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { useAppStore } from "@/lib/store/app-store";
 
 export default function BrandingCardsPage() {
   const { clients, clientsLoading } = useAppStore();
   const [search, setSearch] = useState("");
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
 
   // Only clients that actually have an uploaded brand card.
   const cards = useMemo(
@@ -116,15 +118,20 @@ export default function BrandingCardsPage() {
                 transition={{ duration: 0.22, delay: Math.min(i, 12) * 0.03 }}
                 className="group rounded-2xl border border-border/40 bg-card/70 glass overflow-hidden hover:border-primary/40 transition-colors"
               >
-                {/* Brand card image */}
-                <div className="relative h-44 w-full bg-gradient-to-br from-muted/40 to-muted/10 flex items-center justify-center overflow-hidden">
+                {/* Brand card image — click to view full screen */}
+                <button
+                  type="button"
+                  onClick={() => setLightbox({ src: c.brandCardImage!, alt: `${c.name} brand card` })}
+                  title="View full screen"
+                  className="relative h-44 w-full bg-gradient-to-br from-muted/40 to-muted/10 flex items-center justify-center overflow-hidden cursor-zoom-in"
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={c.brandCardImage}
                     alt={`${c.name} brand card`}
-                    className="max-h-full max-w-full object-contain"
+                    className="max-h-full max-w-full object-contain transition-transform group-hover:scale-[1.03]"
                   />
-                </div>
+                </button>
 
                 {/* Meta */}
                 <div className="p-4">
@@ -158,6 +165,10 @@ export default function BrandingCardsPage() {
             ))}
           </AnimatePresence>
         </div>
+      )}
+
+      {lightbox && (
+        <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />
       )}
     </div>
   );

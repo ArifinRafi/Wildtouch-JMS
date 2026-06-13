@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { uploadImage } from "@/lib/cloudinary";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { useAppStore } from "@/lib/store/app-store";
 import type { Client, ClientPricing, AdditionalContact } from "@/lib/store/app-store";
 import {
@@ -166,6 +167,7 @@ export default function ClientDetailPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [uploading, setUploading] = useState<{ brandCardImage?: boolean; barcodeImage?: boolean }>({});
   const [imgError, setImgError] = useState("");
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
 
   // Re-derive form when switching to edit mode
   const startEdit = useCallback(() => {
@@ -521,14 +523,19 @@ export default function ClientDetailPage() {
                         Brand Card
                       </span>
                     </div>
-                    <div className="relative h-40 w-full overflow-hidden rounded-lg border border-border/30 bg-background flex items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setLightbox({ src: client.brandCardImage!, alt: "Brand Card" })}
+                      title="View full screen"
+                      className="relative h-40 w-full overflow-hidden rounded-lg border border-border/30 bg-background flex items-center justify-center cursor-zoom-in"
+                    >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={client.brandCardImage}
                         alt="Brand Card"
                         className="max-h-full max-w-full object-contain"
                       />
-                    </div>
+                    </button>
                   </div>
                 )}
                 {client.barcodeImage && (
@@ -539,14 +546,19 @@ export default function ClientDetailPage() {
                         Barcode
                       </span>
                     </div>
-                    <div className="relative h-40 w-full overflow-hidden rounded-lg border border-border/30 bg-background flex items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setLightbox({ src: client.barcodeImage!, alt: "Barcode" })}
+                      title="View full screen"
+                      className="relative h-40 w-full overflow-hidden rounded-lg border border-border/30 bg-background flex items-center justify-center cursor-zoom-in"
+                    >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={client.barcodeImage}
                         alt="Barcode"
                         className="max-h-full max-w-full object-contain"
                       />
-                    </div>
+                    </button>
                   </div>
                 )}
               </div>
@@ -621,6 +633,9 @@ export default function ClientDetailPage() {
             </AnimatePresence>
           )}
         </div>
+        {lightbox && (
+          <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />
+        )}
       </motion.div>
     );
   }
@@ -965,6 +980,7 @@ export default function ClientDetailPage() {
             uploading={!!uploading.brandCardImage}
             onUpload={(file) => handleImageUpload("brandCardImage", file)}
             onClear={() => clearImage("brandCardImage")}
+            onView={() => setLightbox({ src: form.brandCardImage, alt: "Brand Card" })}
           />
           <ImageUploadCard
             label="Barcode"
@@ -973,6 +989,7 @@ export default function ClientDetailPage() {
             uploading={!!uploading.barcodeImage}
             onUpload={(file) => handleImageUpload("barcodeImage", file)}
             onClear={() => clearImage("barcodeImage")}
+            onView={() => setLightbox({ src: form.barcodeImage, alt: "Barcode" })}
           />
         </div>
         {imgError && (
@@ -1008,6 +1025,9 @@ export default function ClientDetailPage() {
           Cancel
         </Button>
       </div>
+      {lightbox && (
+        <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />
+      )}
     </motion.div>
   );
 }
@@ -1087,6 +1107,7 @@ function ImageUploadCard({
   onUpload,
   onClear,
   uploading = false,
+  onView,
 }: {
   label: string;
   icon: React.ReactNode;
@@ -1094,6 +1115,7 @@ function ImageUploadCard({
   onUpload: (file: File | null) => void;
   onClear: () => void;
   uploading?: boolean;
+  onView?: () => void;
 }) {
   const inputId = `edit-upload-${label.replace(/\s+/g, "-").toLowerCase()}`;
   return (
@@ -1121,14 +1143,19 @@ function ImageUploadCard({
           <span className="text-xs text-muted-foreground font-medium">Uploading…</span>
         </div>
       ) : value ? (
-        <div className="relative h-36 w-full overflow-hidden rounded-lg border border-border/30 bg-background flex items-center justify-center">
+        <button
+          type="button"
+          onClick={onView}
+          title="View full screen"
+          className="relative h-36 w-full overflow-hidden rounded-lg border border-border/30 bg-background flex items-center justify-center cursor-zoom-in"
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={value}
             alt={label}
             className="max-h-full max-w-full object-contain"
           />
-        </div>
+        </button>
       ) : (
         <label
           htmlFor={inputId}
