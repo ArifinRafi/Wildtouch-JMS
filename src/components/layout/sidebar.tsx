@@ -10,11 +10,9 @@ import {
   Users,
   Boxes,
   ShoppingCart,
-  Warehouse,
   UserCheck,
   Factory,
   Receipt,
-  UserPlus,
   Settings,
   CreditCard,
   ChevronLeft,
@@ -52,7 +50,6 @@ const navigation: NavItem[] = [
   { title: "Planogram", href: "/planogram", icon: LayoutGrid, section: "core" },
   { title: "Digital Whiteboard", href: "/digital-whiteboard", icon: Monitor, section: "operations" },
   { title: "Orders", href: "/orders", icon: ShoppingCart, section: "operations" },
-  { title: "Stock Control", href: "/stock", icon: Warehouse, section: "operations" },
   {
     title: "Production",
     href: "/production",
@@ -67,7 +64,6 @@ const navigation: NavItem[] = [
   { title: "Agents", href: "/agents", icon: UserCheck, section: "operations" },
   { title: "Branding Cards", href: "/branding-cards", icon: CreditCard, section: "operations" },
   { title: "Invoicing", href: "/invoices", icon: Receipt, section: "finance" },
-  { title: "New Clients", href: "/pipeline", icon: UserPlus, section: "sales" },
   { title: "Settings", href: "/settings", icon: Settings, section: "admin" },
 ];
 
@@ -76,7 +72,6 @@ const sectionLabels: Record<string, string> = {
   core: "Core Data",
   operations: "Operations",
   finance: "Finance",
-  sales: "Sales",
   admin: "Admin",
 };
 
