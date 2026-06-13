@@ -20,7 +20,9 @@ import {
   ScanLine,
   Users as UsersIcon,
   UserPlus,
+  Loader2,
 } from "lucide-react";
+import { uploadImage } from "@/lib/cloudinary";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -115,15 +117,6 @@ function emptyForm(): ClientForm {
   };
 }
 
-function readFileAsDataURL(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 // ─── Page ───────────────────────────────────────────────────────────────────
 export default function NewClientPage() {
   const router = useRouter();
@@ -131,6 +124,8 @@ export default function NewClientPage() {
 
   const [form, setForm] = useState<ClientForm>(emptyForm());
   const [formError, setFormError] = useState("");
+  const [uploading, setUploading] = useState<{ brandCardImage?: boolean; barcodeImage?: boolean }>({});
+  const [imgError, setImgError] = useState("");
 
   const setField = useCallback(
     (key: keyof ClientForm, value: string | boolean) => {
@@ -170,15 +165,19 @@ export default function NewClientPage() {
     [],
   );
 
-  // ── Image uploads ──
+  // ── Image uploads (Cloudinary) ──
   const handleImageUpload = useCallback(
     async (key: "brandCardImage" | "barcodeImage", file: File | null) => {
       if (!file) return;
+      setUploading((u) => ({ ...u, [key]: true }));
+      setImgError("");
       try {
-        const dataUrl = await readFileAsDataURL(file);
-        setForm((prev) => ({ ...prev, [key]: dataUrl }));
-      } catch {
-        /* ignore */
+        const url = await uploadImage(file);
+        setForm((prev) => ({ ...prev, [key]: url }));
+      } catch (e) {
+        setImgError(e instanceof Error ? e.message : "Image upload failed.");
+      } finally {
+        setUploading((u) => ({ ...u, [key]: false }));
       }
     },
     [],
@@ -604,6 +603,7 @@ export default function NewClientPage() {
             label="Brand Card"
             icon={<ImageIcon className="h-4 w-4" />}
             value={form.brandCardImage}
+            uploading={!!uploading.brandCardImage}
             onUpload={(file) => handleImageUpload("brandCardImage", file)}
             onClear={() => clearImage("brandCardImage")}
           />
@@ -611,10 +611,14 @@ export default function NewClientPage() {
             label="Barcode"
             icon={<ScanLine className="h-4 w-4" />}
             value={form.barcodeImage}
+            uploading={!!uploading.barcodeImage}
             onUpload={(file) => handleImageUpload("barcodeImage", file)}
             onClear={() => clearImage("barcodeImage")}
           />
         </div>
+        {imgError && (
+          <p className="mt-3 text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2 border border-destructive/20">{imgError}</p>
+        )}
       </Section>
 
       {/* ── Section 7: Special Information ── */}
@@ -683,12 +687,14 @@ function ImageUploadCard({
   value,
   onUpload,
   onClear,
+  uploading = false,
 }: {
   label: string;
   icon: React.ReactNode;
   value: string;
   onUpload: (file: File | null) => void;
   onClear: () => void;
+  uploading?: boolean;
 }) {
   const inputId = `new-upload-${label.replace(/\s+/g, "-").toLowerCase()}`;
   return (
@@ -710,7 +716,12 @@ function ImageUploadCard({
         )}
       </div>
 
-      {value ? (
+      {uploading ? (
+        <div className="flex h-36 w-full flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-border/40 bg-background/30">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          <span className="text-xs text-muted-foreground font-medium">Uploading…</span>
+        </div>
+      ) : value ? (
         <div className="relative h-36 w-full overflow-hidden rounded-lg border border-border/30 bg-background flex items-center justify-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
