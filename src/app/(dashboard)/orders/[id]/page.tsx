@@ -141,8 +141,10 @@ ${order.notes ? `<div class="box"><h4>Notes</h4><div class="muted">${esc(order.n
     const billAddr = esc(c.invoiceAddress || "");
     const shipAddr = esc(c.deliveryAddress || c.invoiceAddress || "");
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Packing Slip ${esc(order.orderNumber)}</title>
-<style>@page{size:A4;margin:16mm}*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:"Segoe UI",Arial,sans-serif;font-size:12px;color:#1f2937;line-height:1.45}
+<style>@page{size:A4;margin:0}*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Segoe UI",Arial,sans-serif;font-size:12px;color:#1f2937;line-height:1.45;background:#f1f5f9}
+.sheet{width:210mm;min-height:297mm;margin:0 auto;padding:20mm;background:#fff}
+@media print{body{background:#fff}.sheet{margin:0}}
 .top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:26px}
 .title{font-size:26px;font-weight:800;color:#1e293b;letter-spacing:-.5px}
 .ord{margin-top:12px;font-weight:700}
@@ -167,11 +169,12 @@ tbody td.q{text-align:right;white-space:nowrap;font-weight:600}
 .thanks .small{font-weight:400;font-size:11px;color:#555;margin-top:2px}
 .reg{text-align:center;margin-top:22px;font-size:11px;color:#374151}
 .reg .h{font-weight:700;margin-bottom:3px}
-.pod{margin-top:40px;border:1px solid #333;padding:10px 14px;width:320px}
+.pod{margin:40px auto 0;border:1px solid #333;padding:10px 14px;width:320px}
 .pod .t{font-weight:700;text-decoration:underline;margin-bottom:10px}
 .pod .row{margin:9px 0;min-height:20px;border-bottom:1px dotted #bbb;padding-bottom:2px}
 .pod .lbl{display:inline-block;width:100px;color:#333}
 </style></head><body>
+<div class="sheet">
 <div class="top">
   <div>
     <div class="title">Packing Slip</div>
@@ -206,6 +209,7 @@ tbody td.q{text-align:right;white-space:nowrap;font-weight:600}
   <div class="row"><span class="lbl">Print:</span></div>
   <div class="row"><span class="lbl">Signature:</span></div>
   <div class="row"><span class="lbl">Order From:</span> Wildtouch</div>
+</div>
 </div>
 </body></html>`;
     const win = window.open("", "_blank", "width=900,height=800");
