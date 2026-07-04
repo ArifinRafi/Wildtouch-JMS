@@ -31,6 +31,11 @@ const InvoiceSchema = new Schema(
     client: { type: InvoiceClientSchema, default: () => ({}) },
     lineItems: { type: [InvoiceLineSchema], default: [] },
     subtotal: { type: Number, default: 0, min: 0 },
+    shipping: { type: Number, default: 0, min: 0 },
+    /** VAT rate as a percentage, e.g. 20. */
+    vatRate: { type: Number, default: 0, min: 0 },
+    /** Computed VAT amount = subtotal * vatRate / 100. */
+    vat: { type: Number, default: 0, min: 0 },
     total: { type: Number, default: 0, min: 0 },
     currency: { type: String, default: "GBP" },
     status: { type: String, enum: ["issued", "paid", "void"], default: "issued" },
@@ -58,6 +63,9 @@ export function serializeInvoice(doc: {
   client?: Record<string, unknown> | null;
   lineItems?: unknown[] | null;
   subtotal?: number;
+  shipping?: number;
+  vatRate?: number;
+  vat?: number;
   total?: number;
   currency?: string;
   status?: string;
@@ -72,6 +80,9 @@ export function serializeInvoice(doc: {
     client: doc.client ?? {},
     lineItems: doc.lineItems ?? [],
     subtotal: doc.subtotal ?? 0,
+    shipping: doc.shipping ?? 0,
+    vatRate: doc.vatRate ?? 0,
+    vat: doc.vat ?? 0,
     total: doc.total ?? 0,
     currency: doc.currency ?? "GBP",
     status: doc.status ?? "issued",

@@ -27,6 +27,8 @@ export interface OrderDraft {
   stockChecked: boolean;
   client: OrderClientSnapshot | null;
   notes: string;
+  /** VAT rate (percentage) entered by the user at order creation. */
+  vatRate?: number;
 }
 
 export const emptyDraft = (): OrderDraft => ({
@@ -37,6 +39,7 @@ export const emptyDraft = (): OrderDraft => ({
   stockChecked: false,
   client: null,
   notes: "",
+  vatRate: 20,
 });
 
 interface OrderDraftValue {

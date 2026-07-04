@@ -63,6 +63,9 @@ const OrderSchema = new Schema(
     lineItems: { type: [LineItemSchema], default: [] },
     componentRequirements: { type: [ComponentRequirementSchema], default: [] },
     subtotal: { type: Number, default: 0, min: 0 },
+    shipping: { type: Number, default: 0, min: 0 },
+    vatRate: { type: Number, default: 0, min: 0 },
+    vat: { type: Number, default: 0, min: 0 },
     total: { type: Number, default: 0, min: 0 },
     notes: { type: String, default: "" },
     inventoryDeducted: { type: Boolean, default: false },
@@ -92,6 +95,9 @@ export function serializeOrder(doc: {
   lineItems?: unknown[] | null;
   componentRequirements?: unknown[] | null;
   subtotal?: number;
+  shipping?: number;
+  vatRate?: number;
+  vat?: number;
   total?: number;
   notes?: string;
   inventoryDeducted?: boolean;
@@ -107,6 +113,9 @@ export function serializeOrder(doc: {
     lineItems: doc.lineItems ?? [],
     componentRequirements: doc.componentRequirements ?? [],
     subtotal: doc.subtotal ?? 0,
+    shipping: doc.shipping ?? 0,
+    vatRate: doc.vatRate ?? 0,
+    vat: doc.vat ?? 0,
     total: doc.total ?? 0,
     notes: doc.notes ?? "",
     inventoryDeducted: doc.inventoryDeducted ?? false,

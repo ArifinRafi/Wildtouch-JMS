@@ -15,15 +15,113 @@ interface Invoice {
   client: { name?: string; email?: string; contactNumber?: string; invoiceAddress?: string; deliveryAddress?: string; clientId?: string };
   lineItems: InvoiceLine[];
   subtotal: number;
+  shipping: number;
+  vatRate: number;
+  vat: number;
   total: number;
   currency: string;
   status: string;
   createdAt: string | null;
 }
 
-function fmtDate(iso: string | null) {
+const esc = (v: string) => String(v ?? "").replace(/[&<>]/g, (m) => (m === "&" ? "&amp;" : m === "<" ? "&lt;" : "&gt;"));
+const gbp = (n: number) => `£${(Number(n) || 0).toFixed(2)}`;
+
+function dateShort(iso: string | null) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+/** The single source of truth for how an invoice looks — used both on screen (iframe) and in the printed PDF. */
+function buildInvoiceHtml(inv: Invoice): string {
+  const c = inv.client || {};
+  const rows = inv.lineItems
+    .map((l) => {
+      const desc = esc(l.description || "—");
+      const code = esc(l.code || "");
+      return `<tr><td><div class="desc">${desc}${code ? ` ${code}` : ""}</div>${code ? `<div class="code">${code}</div>` : ""}</td><td class="q">&times; ${l.qty}</td><td class="p">${gbp(l.unitPrice)}</td><td class="t">${gbp(l.lineTotal)}</td></tr>`;
+    })
+    .join("");
+  const tel = (n?: string) => (n ? `<div class="lines">Tel. ${esc(n)}</div>` : "");
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Invoice ${esc(inv.invoiceNumber)}</title>
+<style>@page{size:A4;margin:0}*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Segoe UI",Arial,sans-serif;font-size:12px;color:#1f2937;line-height:1.45;background:#f1f5f9}
+.sheet{width:210mm;min-height:297mm;margin:0 auto;padding:18mm;background:#fff}
+@media screen{.sheet{width:100%;max-width:820px;min-height:0;padding:32px}}
+@media print{body{background:#fff}.sheet{width:210mm;min-height:297mm;padding:18mm;margin:0}}
+.top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px}
+.title{font-size:28px;font-weight:800;color:#1e293b;margin-bottom:8px}
+.meta{font-size:12px}
+.brand{text-align:right}
+.brand .logo{font-family:"Segoe Script","Brush Script MT",cursive;font-size:34px;color:#3b2f6b;line-height:1}
+.brand .tag{font-size:9px;color:#555;border-top:1px solid #999;border-bottom:1px solid #999;padding:2px 0;margin-top:3px}
+.brand .sub{font-size:12px;font-weight:700;color:#1e293b;margin-top:5px;letter-spacing:.06em}
+.addr{display:flex;justify-content:space-between;gap:48px;margin:6px 0}
+.addr .col{flex:1}
+.addr h4{font-size:12px;font-weight:700;margin-bottom:6px}
+.addr .nm{font-weight:600}
+.addr .lines{white-space:pre-line;color:#333}
+hr{border:none;border-top:1px solid #94a3b8;margin:14px 0}
+table.items{width:100%;border-collapse:collapse}
+table.items thead th{text-align:left;font-size:12px;font-weight:700;border-bottom:1px solid #cbd5e1;padding:8px 4px}
+table.items th.q,table.items th.p,table.items th.t{text-align:right}
+table.items tbody td{padding:12px 4px;border-bottom:1px solid #eee;vertical-align:top}
+table.items td.q,table.items td.p,table.items td.t{text-align:right;white-space:nowrap}
+.desc{font-weight:700}
+.code{color:#555;font-size:11px;margin-top:2px}
+.totals{margin:14px 0 0 auto;width:280px}
+.totals .trow{display:flex;justify-content:space-between;padding:6px 2px;border-bottom:1px solid #eee}
+.totals .trow span:first-child{font-weight:600}
+.totals .grand{border-bottom:none;border-top:2px solid #334155;font-weight:800;font-size:14px;padding-top:8px}
+.pay{margin-top:26px;font-size:11px;color:#374151;text-align:center;line-height:1.7}
+.pay .ph{font-weight:700;margin-bottom:4px;font-size:12px}
+.reg{margin-top:20px;font-size:11px;color:#374151;text-align:center;line-height:1.6}
+.reg .h{font-weight:700;margin-bottom:3px}
+</style></head><body>
+<div class="sheet">
+<div class="top">
+  <div>
+    <div class="title">Invoice</div>
+    <div class="meta"><strong>Invoice No.</strong> #${esc(inv.invoiceNumber)}</div>
+    <div class="meta"><strong>Order Date</strong> ${dateShort(inv.createdAt)}</div>
+    ${c.email ? `<div class="meta"><strong>Email</strong> ${esc(c.email)}</div>` : ""}
+  </div>
+  <div class="brand">
+    <div class="logo">Wildtouch</div>
+    <div class="tag">Specialising in Souvenirs for Attractions</div>
+    <div class="sub">STERLING-K LTD</div>
+  </div>
+</div>
+<div class="addr">
+  <div class="col"><h4>Bill to</h4><div class="nm">${esc(c.name || "—")}</div><div class="lines">${esc(c.invoiceAddress || "")}</div>${tel(c.contactNumber)}</div>
+  <div class="col"><h4>Ship to</h4><div class="nm">${esc(c.name || "—")}</div><div class="lines">${esc(c.deliveryAddress || c.invoiceAddress || "")}</div>${tel(c.contactNumber)}</div>
+</div>
+<hr/>
+<table class="items">
+  <thead><tr><th>Item Description</th><th class="q">Qty</th><th class="p">Price</th><th class="t">Total</th></tr></thead>
+  <tbody>${rows || `<tr><td>No items</td><td class="q">0</td><td class="p">${gbp(0)}</td><td class="t">${gbp(0)}</td></tr>`}</tbody>
+</table>
+<div class="totals">
+  <div class="trow"><span>Subtotal</span><span>${gbp(inv.subtotal)}</span></div>
+  <div class="trow"><span>Shipping</span><span>${gbp(inv.shipping)}</span></div>
+  <div class="trow"><span>VAT ${inv.vatRate}%</span><span>${gbp(inv.vat)}</span></div>
+  <div class="trow grand"><span>Total incl. VAT</span><span>${gbp(inv.total)}</span></div>
+</div>
+<div class="pay">
+  <div class="ph">Payment Instructions:</div>
+  <div><strong>Pound Sterling Payments:</strong> Bank / Branch: TSB Bank Plc | Acc name: Sterling-K Ltd | Acc No: 00087646 | Sort code: 77-85-66 | IBAN: GB98TSBS77856600087646 | SWIFTBIC: TSBSGB2AXXX</div>
+  <div><strong>Euro Payments Bank:</strong> RBS Branch: Wolverhampton | IBAN: GB29RBOS16108510109304 | IBANBIC: RBOSGB2L</div>
+  <div><strong>Cheques Payments:</strong> Please make cheque payments to Sterling-K Ltd</div>
+  <div><strong>Payment Terms:</strong> Please make payment within 28 days. Overdue surcharge 2.5% per month</div>
+</div>
+<div class="reg">
+  <div class="h">Registered Company Info:</div>
+  <div>VAT# GB909275015 | Registered / Company # 06259731</div>
+  <div>Contact Details: Sterling-K Ltd c/o Sterling-K House, 12 Well Street, Birmingham, B19 3BH | T: 0121 551 2699</div>
+  <div>Email: sales@wildtouch.co.uk | Website: www.wildtouch.co.uk</div>
+</div>
+</div>
+</body></html>`;
 }
 
 export default function InvoiceViewPage() {
@@ -48,25 +146,11 @@ export default function InvoiceViewPage() {
 
   const printInvoice = () => {
     if (!inv) return;
-    const rows = inv.lineItems.map((l, i) => `<tr><td class="rn">${i + 1}</td><td>${l.description}</td><td class="c">${l.code || "—"}</td><td class="num">${l.qty}</td><td class="num">£${l.unitPrice.toFixed(2)}</td><td class="num">£${l.lineTotal.toFixed(2)}</td></tr>`).join("");
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Invoice ${inv.invoiceNumber}</title>
-<style>@page{size:A4;margin:18mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:"Segoe UI",Arial,sans-serif;font-size:11px;color:#111}
-.head{display:flex;justify-content:space-between;border-bottom:2px solid #6d28d9;padding-bottom:12px;margin-bottom:16px}
-.brand{font-size:20px;font-weight:800;color:#6d28d9}.muted{color:#666;font-size:11px}
-.inv{text-align:right}.inv h2{font-size:16px;color:#111}.box{margin:14px 0}.box h4{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#6d28d9;margin-bottom:3px}
-table{width:100%;border-collapse:collapse;margin-top:10px}th{background:#6d28d9;color:#fff;padding:7px 9px;font-size:9px;text-transform:uppercase;text-align:left}
-td{padding:6px 9px;border-bottom:1px solid #e5e7eb}.rn{width:28px;color:#6d28d9;font-weight:700;text-align:center}.c{font-family:monospace}.num{text-align:right}
-tfoot td{font-weight:800;border-top:2px solid #6d28d9}</style></head><body>
-<div class="head"><div><div class="brand">Wildtouch JMS</div><div class="muted">Handcrafted jewellery</div></div>
-<div class="inv"><h2>INVOICE</h2><div class="muted">${inv.invoiceNumber}</div><div class="muted">Order ${inv.orderNumber}</div><div class="muted">${fmtDate(inv.createdAt)}</div></div></div>
-<div class="box"><h4>Bill To</h4><div><strong>${inv.client.name || "—"}</strong></div><div class="muted" style="white-space:pre-line">${inv.client.invoiceAddress || ""}</div>${inv.client.email ? `<div class="muted">${inv.client.email}</div>` : ""}</div>
-<table><thead><tr><th>#</th><th>Description</th><th>Code</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Amount</th></tr></thead>
-<tbody>${rows}</tbody>
-<tfoot><tr><td colspan="5" style="text-align:right">Total</td><td class="num">£${inv.total.toFixed(2)}</td></tr></tfoot></table>
-</body></html>`;
     const win = window.open("", "_blank", "width=900,height=800");
     if (!win) return;
-    win.document.write(html); win.document.close(); win.focus();
+    win.document.write(buildInvoiceHtml(inv));
+    win.document.close();
+    win.focus();
     setTimeout(() => win.print(), 350);
   };
 
@@ -80,7 +164,7 @@ tfoot td{font-weight:800;border-top:2px solid #6d28d9}</style></head><body>
   );
 
   return (
-    <div className="space-y-6 pb-12 max-w-3xl">
+    <div className="space-y-6 pb-12 max-w-[900px]">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
         <Link href="/invoices" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mb-3 transition-colors">
           <ArrowLeft className="h-3.5 w-3.5" /> Back to Invoices
@@ -93,65 +177,21 @@ tfoot td{font-weight:800;border-top:2px solid #6d28d9}</style></head><body>
         </div>
       </motion.div>
 
-      {/* Online invoice */}
+      {/* Online invoice — identical to the printed PDF (same HTML) */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
-        className="rounded-2xl border border-border/40 bg-card/70 glass p-6 sm:p-8">
-        <div className="flex items-start justify-between flex-wrap gap-4 border-b border-border/30 pb-5">
-          <div>
-            <p className="text-xl font-extrabold text-primary">Wildtouch JMS</p>
-            <p className="text-xs text-muted-foreground">Handcrafted jewellery</p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm font-bold">INVOICE</p>
-            <p className="text-xs text-muted-foreground font-mono">{inv.invoiceNumber}</p>
-            <p className="text-xs text-muted-foreground">Order {inv.orderNumber}</p>
-            <p className="text-xs text-muted-foreground">{fmtDate(inv.createdAt)}</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-5">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-primary mb-1">Bill To</p>
-            <p className="text-sm font-semibold">{inv.client.name || "—"}</p>
-            <p className="text-xs text-muted-foreground whitespace-pre-line">{inv.client.invoiceAddress || ""}</p>
-            {inv.client.email && <p className="text-xs text-muted-foreground mt-0.5">{inv.client.email}</p>}
-          </div>
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-primary mb-1">Deliver To</p>
-            <p className="text-xs text-muted-foreground whitespace-pre-line">{inv.client.deliveryAddress || inv.client.invoiceAddress || "—"}</p>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="border-b border-border/30 bg-muted/20">
-                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Description</th>
-                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Code</th>
-                <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Qty</th>
-                <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Unit</th>
-                <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {inv.lineItems.map((l, i) => (
-                <tr key={i} className="border-b border-border/15 last:border-b-0">
-                  <td className="px-3 py-2 text-sm font-medium">{l.description}</td>
-                  <td className="px-3 py-2 text-xs font-mono text-muted-foreground">{l.code || "—"}</td>
-                  <td className="px-3 py-2 text-right text-sm tabular-nums">{l.qty}</td>
-                  <td className="px-3 py-2 text-right text-sm tabular-nums">£{l.unitPrice.toFixed(2)}</td>
-                  <td className="px-3 py-2 text-right text-sm tabular-nums">£{l.lineTotal.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-primary/30">
-                <td colSpan={4} className="px-3 py-3 text-right text-sm font-bold">Total</td>
-                <td className="px-3 py-3 text-right text-base font-black tabular-nums text-primary">£{inv.total.toFixed(2)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        className="rounded-2xl border border-border/40 bg-white overflow-hidden shadow-sm">
+        <iframe
+          title="Invoice"
+          srcDoc={buildInvoiceHtml(inv)}
+          className="w-full block"
+          style={{ border: 0, height: 900 }}
+          onLoad={(e) => {
+            try {
+              const doc = e.currentTarget.contentDocument;
+              if (doc) e.currentTarget.style.height = `${doc.documentElement.scrollHeight + 8}px`;
+            } catch { /* cross-origin guard — not applicable for srcDoc */ }
+          }}
+        />
       </motion.div>
     </div>
   );

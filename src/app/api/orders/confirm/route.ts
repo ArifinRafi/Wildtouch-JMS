@@ -37,8 +37,12 @@ export async function POST(request: NextRequest) {
     lineTotal: Math.max(0, Number(li.lineTotal) || 0),
   }));
 
-  const subtotal = normalizedLines.reduce((s, l) => s + l.lineTotal, 0);
-  const total = subtotal;
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const subtotal = round2(normalizedLines.reduce((s, l) => s + l.lineTotal, 0));
+  const shipping = round2(Math.max(0, Number(body.shipping) || 0));
+  const vatRate = Math.max(0, Number(body.vatRate) || 0);
+  const vat = round2((subtotal * vatRate) / 100);
+  const total = round2(subtotal + shipping + vat);
 
   // 1. Create the order
   const orderNumber = await nextOrderNumber();
@@ -50,6 +54,9 @@ export async function POST(request: NextRequest) {
     lineItems: normalizedLines,
     componentRequirements: Array.isArray(body.componentRequirements) ? body.componentRequirements : [],
     subtotal,
+    shipping,
+    vatRate,
+    vat,
     total,
     notes: String(body.notes ?? ""),
   });
@@ -69,6 +76,9 @@ export async function POST(request: NextRequest) {
       lineTotal: l.lineTotal,
     })),
     subtotal,
+    shipping,
+    vatRate,
+    vat,
     total,
     currency: "GBP",
     status: "issued",
