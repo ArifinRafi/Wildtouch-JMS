@@ -24,6 +24,7 @@ function clean(body: Record<string, unknown>) {
     quantity: Math.max(0, Number(body.quantity) || 0),
     quantityReceived: Math.max(0, Number(body.quantityReceived) || 0),
     priority: String(body.priority ?? "").trim(),
+    shipmentMethod: String(body.shipmentMethod ?? "").trim(),
     progressNotes: String(body.progressNotes ?? "").trim(),
     notesLog: cleanNotes(body.notesLog),
     dateRequested: String(body.dateRequested ?? "").trim(),

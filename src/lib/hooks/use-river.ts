@@ -13,6 +13,7 @@ export interface RiverOrder {
   outstanding: number;
   status: "open" | "partial" | "complete";
   priority: string;
+  shipmentMethod: string;
   progressNotes: string;
   notesLog: { date: string; note: string }[];
   dateRequested: string;

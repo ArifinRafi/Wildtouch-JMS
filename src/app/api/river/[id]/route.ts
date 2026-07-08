@@ -6,7 +6,7 @@ import { RiverOrder, serializeRiverOrder } from "@/lib/models/RiverOrder";
 
 const NUM = new Set(["quantity", "quantityReceived", "valueRmb", "valueGbp"]);
 const STR = new Set([
-  "orderNumber", "date", "product", "description", "priority", "progressNotes",
+  "orderNumber", "date", "product", "description", "priority", "shipmentMethod", "progressNotes",
   "dateRequested", "datePaid", "componentId", "componentCode", "componentLabel",
 ]);
 

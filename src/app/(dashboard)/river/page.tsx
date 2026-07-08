@@ -45,6 +45,13 @@ const STATUS_STYLE: Record<string, string> = {
   complete: "bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400",
 };
 
+const PRIORITY_OPTS = ["Normal", "Medium", "High"];
+const PRIORITY_STYLE: Record<string, string> = {
+  Normal: "bg-slate-500/10 border-slate-500/25 text-slate-600 dark:text-slate-300",
+  Medium: "bg-amber-500/10 border-amber-500/25 text-amber-600 dark:text-amber-400",
+  High: "bg-red-500/10 border-red-500/25 text-red-600 dark:text-red-400",
+};
+
 const cellInput = "h-7 w-full min-w-0 rounded-md border border-border/40 bg-muted/30 px-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";
 
 export default function RiverPage() {
@@ -132,7 +139,7 @@ export default function RiverPage() {
       orderNumber: String(draft.orderNumber ?? "").trim(), date: String(draft.date ?? ""),
       product: String(draft.product ?? "").trim(), description: String(draft.description ?? "").trim(),
       quantity: num(draft.quantity), valueGbp: num(draft.valueGbp), valueRmb: num(draft.valueRmb),
-      priority: String(draft.priority ?? "").trim(),
+      priority: String(draft.priority ?? "").trim(), shipmentMethod: String(draft.shipmentMethod ?? "").trim(),
       notesLog: (draft.notesLog ?? []).map((n) => ({ date: String(n?.date ?? ""), note: String(n?.note ?? "") })),
       dateRequested: String(draft.dateRequested ?? ""), datePaid: String(draft.datePaid ?? ""),
     };
@@ -162,7 +169,7 @@ export default function RiverPage() {
     setToDelete(null);
   }, [toDelete, deleteOrder]);
 
-  const COLS = ["Order #", "Date", "Component", "Description", "Qty", "£", "¥", "Priority", "Notes", "Requested", "Paid", "Done", "Left", "Status", ""];
+  const COLS = ["Order #", "Date", "Component", "Description", "Qty", "£", "¥", "Priority", "Shipment", "Notes", "Requested", "Paid", "Done", "Left", "Status", ""];
 
   return (
     <div className="space-y-6 pb-12">
@@ -248,7 +255,7 @@ export default function RiverPage() {
           <div className="overflow-x-auto">
             <table className="w-full border-collapse table-fixed">
               <colgroup>
-                {[7, 7, 10, 8, 5, 5, 5, 7, 11, 7, 7, 4, 4, 5, 8].map((w, i) => <col key={i} style={{ width: `${w}%` }} />)}
+                {[6, 6, 10, 8, 4, 5, 5, 6, 8, 10, 6, 6, 4, 4, 5, 7].map((w, i) => <col key={i} style={{ width: `${w}%` }} />)}
               </colgroup>
               <thead>
                 <tr className="border-b border-border/30 bg-muted/20">
@@ -300,8 +307,17 @@ export default function RiverPage() {
                         </td>
                         {/* Priority */}
                         <td className="px-1.5 py-2 align-top">
-                          {editing ? <input value={String(v.priority ?? "")} onChange={(e) => df("priority", e.target.value)} className={cellInput} />
-                            : <span className="text-[10px] text-muted-foreground line-clamp-3 break-words">{o.priority || "—"}</span>}
+                          {editing ? (
+                            <select value={String(v.priority ?? "")} onChange={(e) => df("priority", e.target.value)} className={cellInput}>
+                              <option value="">—</option>
+                              {PRIORITY_OPTS.map((p) => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                          ) : (o.priority ? <Badge variant="outline" className={cn("text-[9px] px-1.5 font-semibold", PRIORITY_STYLE[o.priority] ?? "")}>{o.priority}</Badge> : <span className="text-[10px] text-muted-foreground/40">—</span>)}
+                        </td>
+                        {/* Shipment method */}
+                        <td className="px-1.5 py-2 align-top">
+                          {editing ? <input value={String(v.shipmentMethod ?? "")} onChange={(e) => df("shipmentMethod", e.target.value)} placeholder="e.g. Air" className={cellInput} />
+                            : <span className="text-[10px] text-muted-foreground break-words">{o.shipmentMethod || "—"}</span>}
                         </td>
                         {/* Notes */}
                         <td className="px-1.5 py-2 align-top">

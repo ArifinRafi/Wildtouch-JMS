@@ -20,6 +20,8 @@ const RiverOrderSchema = new Schema(
     quantity: { type: Number, default: 0, min: 0 },
     quantityReceived: { type: Number, default: 0, min: 0 },
     priority: { type: String, default: "" },
+    /** Shipment method to River (free text, e.g. Air / Sea). */
+    shipmentMethod: { type: String, default: "" },
     progressNotes: { type: String, default: "" },
     /** Dated progress log (date + note entries). */
     notesLog: { type: [RiverNoteSchema], default: [] },
@@ -56,6 +58,7 @@ export function serializeRiverOrder(doc: {
   quantity?: number;
   quantityReceived?: number;
   priority?: string;
+  shipmentMethod?: string;
   progressNotes?: string;
   notesLog?: { date?: string; note?: string }[] | null;
   dateRequested?: string;
@@ -81,6 +84,7 @@ export function serializeRiverOrder(doc: {
     outstanding: Math.max(0, quantity - quantityReceived),
     status: riverStatus(quantity, quantityReceived),
     priority: doc.priority ?? "",
+    shipmentMethod: doc.shipmentMethod ?? "",
     progressNotes: doc.progressNotes ?? "",
     notesLog: (doc.notesLog ?? []).map((n) => ({ date: n?.date ?? "", note: n?.note ?? "" })),
     dateRequested: doc.dateRequested ?? "",
