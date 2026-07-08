@@ -31,8 +31,6 @@ import { uploadImage, thumbUrl } from "@/lib/cloudinary";
 import { useRole } from "@/lib/hooks/use-role";
 import { useDesigns, type Design, type NewDesign } from "@/lib/hooks/use-designs";
 
-const CATEGORY_TYPES = ["", "Glitter", "Pin Badge", "Keyring", "Magnet", "Brooch"];
-
 const cellInput = "h-8 w-full rounded-lg border border-border/40 bg-muted/30 px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";
 
 export default function DesignTrackerPage() {
@@ -43,6 +41,7 @@ export default function DesignTrackerPage() {
   const [tab, setTab] = useState<"live" | "completed">("live");
   const [toDelete, setToDelete] = useState<Design | null>(null);
   const [clients, setClients] = useState<string[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
 
   // Existing client names for the Client picker.
   useEffect(() => {
@@ -51,6 +50,30 @@ export default function DesignTrackerPage() {
       if (on) setClients([...new Set(list.map((c) => c.name).filter((n): n is string => !!n))].sort());
     }).catch(() => {});
     return () => { on = false; };
+  }, []);
+
+  // Category options (managed list — add/delete).
+  useEffect(() => {
+    let on = true;
+    fetch("/api/design-categories").then((r) => (r.ok ? r.json() : [])).then((d: { id: string; name: string }[]) => on && setCategories(d)).catch(() => {});
+    return () => { on = false; };
+  }, []);
+
+  const ensureCategory = useCallback(async (name: string) => {
+    const n = (name ?? "").trim();
+    if (!n || categories.some((c) => c.name.toLowerCase() === n.toLowerCase())) return;
+    try {
+      const res = await fetch("/api/design-categories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: n }) });
+      if (res.ok) {
+        const c = await res.json();
+        setCategories((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, c].sort((a, b) => a.name.localeCompare(b.name))));
+      }
+    } catch { /* ignore */ }
+  }, [categories]);
+
+  const deleteCategory = useCallback((id: string) => {
+    setCategories((prev) => prev.filter((c) => c.id !== id));
+    fetch(`/api/design-categories/${id}`, { method: "DELETE" }).catch(() => {});
   }, []);
 
   // Row-level inline editing (one row at a time).
@@ -99,9 +122,13 @@ export default function DesignTrackerPage() {
       addedToNewDesignBrochure: (draft.addedToNewDesignBrochure ?? "").trim(),
       addedToThemedBrochure: (draft.addedToThemedBrochure ?? "").trim(),
     };
-    try { await updateDesign(editingId, payload); setEditingId(null); setNewRowId(null); setDraft({}); }
+    try {
+      await ensureCategory(payload.categoryType ?? "");
+      await updateDesign(editingId, payload);
+      setEditingId(null); setNewRowId(null); setDraft({});
+    }
     catch { /* ignore */ } finally { setSaving(false); }
-  }, [editingId, draft, updateDesign]);
+  }, [editingId, draft, updateDesign, ensureCategory]);
 
   const handleUpload = useCallback(async (id: string, file: File | undefined) => {
     if (!file) return;
@@ -217,11 +244,10 @@ export default function DesignTrackerPage() {
                             : <span className="text-sm">{d.clientName || <span className="text-muted-foreground/40">—</span>}</span>}
                         </td>
                         {/* Category type */}
-                        <td className="px-3 py-3 min-w-[150px]">
+                        <td className="px-3 py-3 min-w-[170px]">
                           {editing ? (
-                            <select value={v.categoryType ?? ""} onChange={(e) => df("categoryType", e.target.value)} className={cellInput}>
-                              {CATEGORY_TYPES.map((t) => <option key={t} value={t}>{t || "Select type…"}</option>)}
-                            </select>
+                            <CategoryCombo value={v.categoryType ?? ""} categories={categories}
+                              onChange={(val) => df("categoryType", val)} onAddCategory={ensureCategory} onDeleteCategory={deleteCategory} />
                           ) : (
                             d.categoryType ? <Badge variant="outline" className="text-[10px] border-primary/20 bg-primary/5 text-primary">{d.categoryType}</Badge> : <span className="text-muted-foreground/40 text-sm">—</span>
                           )}
@@ -291,6 +317,46 @@ export default function DesignTrackerPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/** Category field: pick from the managed list, delete options, or type a new one (added on save). */
+function CategoryCombo({
+  value, categories, onChange, onAddCategory, onDeleteCategory,
+}: {
+  value: string;
+  categories: { id: string; name: string }[];
+  onChange: (v: string) => void;
+  onAddCategory: (name: string) => void;
+  onDeleteCategory: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const q = value.trim().toLowerCase();
+  const matches = useMemo(() => (q ? categories.filter((c) => c.name.toLowerCase().includes(q)) : categories), [q, categories]);
+  const exact = categories.some((c) => c.name.toLowerCase() === q);
+
+  return (
+    <div className="relative">
+      <input value={value} onChange={(e) => { onChange(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 200)}
+        placeholder="Type / select…" className={cellInput} />
+      {open && (
+        <div className="absolute z-30 mt-1 w-full min-w-[180px] rounded-xl border border-border/40 bg-popover shadow-xl max-h-56 overflow-y-auto">
+          {value.trim() && !exact && (
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onAddCategory(value.trim()); setOpen(false); }}
+              className="flex w-full items-center px-3 py-1.5 text-left text-xs font-semibold text-primary hover:bg-accent/40 border-b border-border/10">+ Add &ldquo;{value.trim()}&rdquo;</button>
+          )}
+          {matches.map((c) => (
+            <div key={c.id} className="flex items-center justify-between gap-1 px-1.5 py-0.5 hover:bg-accent/40 border-b border-border/10 last:border-b-0">
+              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(c.name); setOpen(false); }}
+                className="flex-1 min-w-0 truncate text-left text-xs px-1.5 py-1">{c.name}</button>
+              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onDeleteCategory(c.id)} title="Delete category"
+                className="shrink-0 p-1 text-muted-foreground/60 hover:text-destructive"><X className="h-3 w-3" /></button>
+            </div>
+          ))}
+          {matches.length === 0 && !value.trim() && <p className="px-3 py-2 text-xs text-muted-foreground">No categories yet.</p>}
+        </div>
+      )}
     </div>
   );
 }
