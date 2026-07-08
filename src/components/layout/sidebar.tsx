@@ -23,6 +23,9 @@ import {
   Monitor,
   LayoutGrid,
   Package,
+  Waves,
+  PenTool,
+  ListChecks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -49,7 +52,10 @@ const navigation: NavItem[] = [
   { title: "Products", href: "/products", icon: Package, section: "core" },
   { title: "Planogram", href: "/planogram", icon: LayoutGrid, section: "core" },
   { title: "Digital Whiteboard", href: "/digital-whiteboard", icon: Monitor, section: "operations" },
+  { title: "Task Manager", href: "/task-manager", icon: ListChecks, section: "operations" },
   { title: "Orders", href: "/orders", icon: ShoppingCart, section: "operations" },
+  { title: "Design Tracker", href: "/design-tracker", icon: PenTool, section: "operations" },
+  { title: "River", href: "/river", icon: Waves, section: "operations" },
   {
     title: "Production",
     href: "/production",

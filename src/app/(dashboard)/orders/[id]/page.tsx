@@ -14,6 +14,7 @@ import {
   Package,
   Boxes,
   ClipboardList,
+  LayoutGrid,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -142,7 +143,7 @@ ${order.notes ? `<div class="box"><h4>Notes</h4><div class="muted">${esc(order.n
   const totalUnits = order.lineItems.reduce((a, l) => a + l.qtyOrdered, 0);
 
   return (
-    <div className="space-y-6 pb-12 max-w-3xl">
+    <div className="space-y-6 pb-12">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
         <Link href="/orders" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mb-3 transition-colors">
@@ -179,9 +180,10 @@ ${order.notes ? `<div class="box"><h4>Notes</h4><div class="muted">${esc(order.n
         </div>
       </motion.div>
 
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
       {/* Order document */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
-        className="rounded-2xl border border-border/40 bg-card/70 glass p-6 sm:p-8">
+        className="flex-1 min-w-0 w-full max-w-3xl rounded-2xl border border-border/40 bg-card/70 glass p-6 sm:p-8">
         <div className="flex items-start justify-between flex-wrap gap-4 border-b border-border/30 pb-5">
           <div>
             <p className="text-xl font-extrabold text-primary">Wildtouch JMS</p>
@@ -285,6 +287,35 @@ ${order.notes ? `<div class="box"><h4>Notes</h4><div class="muted">${esc(order.n
           </div>
         )}
       </motion.div>
+
+      {/* Planogram summary — same panel as on the invoice */}
+      <motion.aside initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4, delay: 0.1 }}
+        className="w-full lg:w-72 lg:shrink-0 rounded-2xl border border-border/40 bg-card/70 glass p-5 lg:sticky lg:top-4">
+        <div className="flex items-center gap-2 mb-1">
+          <LayoutGrid className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-semibold">Planogram</h3>
+        </div>
+        <p className="text-sm font-semibold">{order.planogram?.name || "—"}</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5">
+          Order <span className="font-mono">{order.orderNumber || "—"}</span> · {totalUnits} units
+        </p>
+        <div className="mt-4 border-t border-border/30 pt-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Products &amp; quantities</p>
+          {order.lineItems.length === 0 ? (
+            <p className="text-xs text-muted-foreground/60">No products</p>
+          ) : (
+            <div className="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1">
+              {order.lineItems.map((l, i) => (
+                <div key={i} className="flex items-start justify-between gap-2 text-sm">
+                  <span className="min-w-0 truncate">{l.description || "—"}</span>
+                  <span className="shrink-0 font-bold tabular-nums text-primary">×{l.qtyOrdered}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </motion.aside>
+      </div>
 
       {/* Delete confirm */}
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>

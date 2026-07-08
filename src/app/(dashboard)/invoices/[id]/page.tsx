@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowLeft, Printer, Loader2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Printer, Loader2, AlertTriangle, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface InvoiceLine { code: string; description: string; qty: number; unitPrice: number; lineTotal: number }
 interface Invoice {
   id: string;
   invoiceNumber: string;
+  orderId?: string | null;
   orderNumber: string;
   client: { name?: string; email?: string; contactNumber?: string; invoiceAddress?: string; deliveryAddress?: string; clientId?: string };
   lineItems: InvoiceLine[];
@@ -127,6 +128,7 @@ table.items td.q,table.items td.p,table.items td.t{text-align:right;white-space:
 export default function InvoiceViewPage() {
   const { id } = useParams<{ id: string }>();
   const [inv, setInv] = useState<Invoice | null>(null);
+  const [planogramName, setPlanogramName] = useState("");
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -136,8 +138,18 @@ export default function InvoiceViewPage() {
       try {
         const res = await fetch(`/api/invoices/${id}`);
         if (!res.ok) { if (on) setNotFound(true); return; }
-        const data = await res.json();
+        const data: Invoice = await res.json();
         if (on) setInv(data);
+        // Pull the planogram name from the linked order (for the side panel only).
+        if (data.orderId) {
+          try {
+            const or = await fetch(`/api/orders/${data.orderId}`);
+            if (or.ok) {
+              const order = await or.json();
+              if (on) setPlanogramName(order?.planogram?.name ?? "");
+            }
+          } catch { /* side panel is best-effort */ }
+        }
       } catch { if (on) setNotFound(true); }
       finally { if (on) setLoading(false); }
     })();
@@ -163,8 +175,10 @@ export default function InvoiceViewPage() {
     </div>
   );
 
+  const totalUnits = inv.lineItems.reduce((s, l) => s + l.qty, 0);
+
   return (
-    <div className="space-y-6 pb-12 max-w-[900px]">
+    <div className="space-y-6 pb-12">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
         <Link href="/invoices" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mb-3 transition-colors">
           <ArrowLeft className="h-3.5 w-3.5" /> Back to Invoices
@@ -177,22 +191,53 @@ export default function InvoiceViewPage() {
         </div>
       </motion.div>
 
-      {/* Online invoice — identical to the printed PDF (same HTML) */}
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
-        className="rounded-2xl border border-border/40 bg-white overflow-hidden shadow-sm">
-        <iframe
-          title="Invoice"
-          srcDoc={buildInvoiceHtml(inv)}
-          className="w-full block"
-          style={{ border: 0, height: 900 }}
-          onLoad={(e) => {
-            try {
-              const doc = e.currentTarget.contentDocument;
-              if (doc) e.currentTarget.style.height = `${doc.documentElement.scrollHeight + 8}px`;
-            } catch { /* cross-origin guard — not applicable for srcDoc */ }
-          }}
-        />
-      </motion.div>
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        {/* Online invoice — identical to the printed PDF (same HTML) */}
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
+          className="flex-1 min-w-0 max-w-[820px] w-full rounded-2xl border border-border/40 bg-white overflow-hidden shadow-sm">
+          <iframe
+            title="Invoice"
+            srcDoc={buildInvoiceHtml(inv)}
+            className="w-full block"
+            style={{ border: 0, height: 900 }}
+            onLoad={(e) => {
+              try {
+                const doc = e.currentTarget.contentDocument;
+                if (doc) e.currentTarget.style.height = `${doc.documentElement.scrollHeight + 8}px`;
+              } catch { /* cross-origin guard — not applicable for srcDoc */ }
+            }}
+          />
+        </motion.div>
+
+        {/* Planogram summary — screen only, NOT part of the invoice or its PDF */}
+        <motion.aside initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4, delay: 0.1 }}
+          className="w-full lg:w-72 lg:shrink-0 rounded-2xl border border-border/40 bg-card/70 glass p-5 lg:sticky lg:top-4">
+          <div className="flex items-center gap-2 mb-1">
+            <LayoutGrid className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold">Planogram</h3>
+          </div>
+          <p className="text-sm font-semibold">{planogramName || "—"}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            Order <span className="font-mono">{inv.orderNumber || "—"}</span> · {totalUnits} units
+          </p>
+
+          <div className="mt-4 border-t border-border/30 pt-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Products &amp; quantities</p>
+            {inv.lineItems.length === 0 ? (
+              <p className="text-xs text-muted-foreground/60">No products</p>
+            ) : (
+              <div className="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1">
+                {inv.lineItems.map((l, i) => (
+                  <div key={i} className="flex items-start justify-between gap-2 text-sm">
+                    <span className="min-w-0 truncate">{l.description || "—"}</span>
+                    <span className="shrink-0 font-bold tabular-nums text-primary">×{l.qty}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </motion.aside>
+      </div>
     </div>
   );
 }
