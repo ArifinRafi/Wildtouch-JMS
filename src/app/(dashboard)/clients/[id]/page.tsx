@@ -91,6 +91,7 @@ interface ClientForm {
   invoiceProcedure: string;
   requirePO: boolean;
   emailInvoiceTo: string;
+  vatRate: string;
   topSellingAnimals: string;
   slowSellerDesigns: string;
   substituteDesigns: boolean;
@@ -135,6 +136,7 @@ function clientToForm(c: Client): ClientForm {
     invoiceProcedure: c.invoiceProcedure ?? "",
     requirePO: c.requirePO ?? false,
     emailInvoiceTo: c.emailInvoiceTo ?? "",
+    vatRate: c.vatRate != null ? String(c.vatRate) : "20",
     topSellingAnimals: c.topSellingAnimals ?? "",
     slowSellerDesigns: c.slowSellerDesigns ?? "",
     substituteDesigns: c.substituteDesigns ?? false,
@@ -292,6 +294,7 @@ export default function ClientDetailPage() {
       invoiceProcedure: form.invoiceProcedure.trim() || undefined,
       requirePO: form.requirePO,
       emailInvoiceTo: form.emailInvoiceTo.trim() || undefined,
+      vatRate: Math.max(0, parseFloat(form.vatRate) || 0),
       topSellingAnimals: form.topSellingAnimals.trim() || undefined,
       slowSellerDesigns: form.slowSellerDesigns.trim() || undefined,
       substituteDesigns: form.substituteDesigns,
@@ -427,9 +430,10 @@ export default function ClientDetailPage() {
           )}
 
           {/* Invoicing */}
-          {(client.invoiceProcedure || client.requirePO !== undefined || client.emailInvoiceTo) && (
+          {(client.invoiceProcedure || client.requirePO !== undefined || client.emailInvoiceTo || client.vatRate != null) && (
             <ViewSection title="Invoicing" icon={<FileText className="h-4 w-4" />}>
               <ViewGrid>
+                <ViewField label="VAT Rate" value={client.vatRate != null ? `${client.vatRate}%` : undefined} />
                 <ViewField label="Invoice Procedure" value={client.invoiceProcedure} />
                 <ViewField label="Require PO" value={client.requirePO ? "Yes" : "No"} />
                 <ViewField label="Email Invoice To" value={client.emailInvoiceTo} />
@@ -900,6 +904,11 @@ export default function ClientDetailPage() {
           <div className="space-y-1.5">
             <Label>Email Invoice To</Label>
             <Input className={inputCls} value={form.emailInvoiceTo} onChange={(e) => setField("emailInvoiceTo", e.target.value)} />
+          </div>
+          <div className="space-y-1.5 max-w-[200px]">
+            <Label>VAT rate (%)</Label>
+            <Input type="text" inputMode="decimal" className={inputCls} value={form.vatRate}
+              onChange={(e) => setField("vatRate", e.target.value.replace(/[^0-9.]/g, ""))} placeholder="20" />
           </div>
         </div>
       </EditSection>

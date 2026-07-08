@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   PenTool,
@@ -42,6 +42,16 @@ export default function DesignTrackerPage() {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"live" | "completed">("live");
   const [toDelete, setToDelete] = useState<Design | null>(null);
+  const [clients, setClients] = useState<string[]>([]);
+
+  // Existing client names for the Client picker.
+  useEffect(() => {
+    let on = true;
+    fetch("/api/clients").then((r) => (r.ok ? r.json() : [])).then((list: { name?: string }[]) => {
+      if (on) setClients([...new Set(list.map((c) => c.name).filter((n): n is string => !!n))].sort());
+    }).catch(() => {});
+    return () => { on = false; };
+  }, []);
 
   // Row-level inline editing (one row at a time).
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -83,6 +93,7 @@ export default function DesignTrackerPage() {
     setSaving(true);
     const payload: NewDesign = {
       name: (draft.name ?? "").trim(), image: draft.image ?? "",
+      clientName: (draft.clientName ?? "").trim(),
       categoryName: (draft.categoryName ?? "").trim(), categoryType: draft.categoryType ?? "",
       notes: (draft.notes ?? "").trim(), addedToCodeSheet: (draft.addedToCodeSheet ?? "").trim(),
       addedToNewDesignBrochure: (draft.addedToNewDesignBrochure ?? "").trim(),
@@ -162,14 +173,14 @@ export default function DesignTrackerPage() {
             <table className="w-full min-w-[1120px] border-collapse">
               <thead>
                 <tr className="border-b border-border/30 bg-muted/20">
-                  {["Design", "Category", "Notes", "Code Sheet", "New Brochure", "Themed Brochure", "Completed", ""].map((h, i) => (
+                  {["Design", "Client", "Category", "Notes", "Code Sheet", "New Brochure", "Themed Brochure", "Completed", ""].map((h, i) => (
                     <th key={i} className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={8} className="py-12 text-center text-sm text-muted-foreground">No {tab === "completed" ? "completed" : "live"} designs.</td></tr>
+                  <tr><td colSpan={9} className="py-12 text-center text-sm text-muted-foreground">No {tab === "completed" ? "completed" : "live"} designs.</td></tr>
                 )}
                 <AnimatePresence mode="popLayout">
                   {filtered.map((d) => {
@@ -199,6 +210,11 @@ export default function DesignTrackerPage() {
                               </>
                             )}
                           </div>
+                        </td>
+                        {/* Client */}
+                        <td className="px-3 py-3 min-w-[160px]">
+                          {editing ? <ClientCombo value={v.clientName ?? ""} options={clients} onChange={(val) => df("clientName", val)} />
+                            : <span className="text-sm">{d.clientName || <span className="text-muted-foreground/40">—</span>}</span>}
                         </td>
                         {/* Category type */}
                         <td className="px-3 py-3 min-w-[150px]">
@@ -275,6 +291,31 @@ export default function DesignTrackerPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/** Client field: type freely, or search + pick from the existing client list. */
+function ClientCombo({ value, options, onChange }: { value: string; options: string[]; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const matches = useMemo(() => {
+    const q = value.trim().toLowerCase();
+    const list = q ? options.filter((o) => o.toLowerCase().includes(q)) : options;
+    return list.slice(0, 8);
+  }, [value, options]);
+
+  return (
+    <div className="relative">
+      <input value={value} onChange={(e) => { onChange(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Client / type name…" className={cellInput} />
+      {open && matches.length > 0 && (
+        <div className="absolute z-30 mt-1 w-full rounded-xl border border-border/40 bg-popover shadow-xl max-h-52 overflow-y-auto">
+          {matches.map((o) => (
+            <button key={o} onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(o); setOpen(false); }}
+              className="flex w-full items-center px-3 py-1.5 text-left text-sm hover:bg-accent/40 border-b border-border/10 last:border-b-0">{o}</button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

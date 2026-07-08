@@ -65,6 +65,7 @@ interface ClientForm {
   invoiceProcedure: string;
   requirePO: boolean;
   emailInvoiceTo: string;
+  vatRate: string;
   topSellingAnimals: string;
   slowSellerDesigns: string;
   substituteDesigns: boolean;
@@ -102,6 +103,7 @@ function emptyForm(): ClientForm {
     invoiceProcedure: "",
     requirePO: false,
     emailInvoiceTo: "",
+    vatRate: "20",
     topSellingAnimals: "",
     slowSellerDesigns: "",
     substituteDesigns: false,
@@ -246,6 +248,7 @@ export default function NewClientPage() {
       }),
       ...(form.invoiceProcedure.trim() && { invoiceProcedure: form.invoiceProcedure.trim() }),
       requirePO: form.requirePO,
+      vatRate: Math.max(0, parseFloat(form.vatRate) || 0),
       ...(form.emailInvoiceTo.trim() && { emailInvoiceTo: form.emailInvoiceTo.trim() }),
       ...(form.topSellingAnimals.trim() && { topSellingAnimals: form.topSellingAnimals.trim() }),
       ...(form.slowSellerDesigns.trim() && { slowSellerDesigns: form.slowSellerDesigns.trim() }),
@@ -526,6 +529,12 @@ export default function NewClientPage() {
           <div className="space-y-1.5">
             <Label>Email Invoice To</Label>
             <Input className={inputCls} value={form.emailInvoiceTo} onChange={(e) => setField("emailInvoiceTo", e.target.value)} />
+          </div>
+          <div className="space-y-1.5 max-w-[200px]">
+            <Label>VAT rate (%)</Label>
+            <Input type="text" inputMode="decimal" className={inputCls} value={form.vatRate}
+              onChange={(e) => setField("vatRate", e.target.value.replace(/[^0-9.]/g, ""))} placeholder="20" />
+            <p className="text-[11px] text-muted-foreground">Applied to this client&rsquo;s invoices.</p>
           </div>
         </div>
       </Section>

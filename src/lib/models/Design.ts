@@ -9,6 +9,8 @@ const DesignSchema = new Schema(
   {
     name: { type: String, default: "" },
     image: { type: String, default: "" },
+    /** Client this design is made for (from the client list or a free-typed external name). */
+    clientName: { type: String, default: "" },
     // Category: a name + a type (Glitter / Pin Badge / Keyring / Magnet / Brooch …)
     categoryName: { type: String, default: "" },
     categoryType: { type: String, default: "" },
@@ -31,7 +33,7 @@ export const Design: Model<DesignDoc> =
   mongoose.model<DesignDoc>("Design", DesignSchema);
 
 export const DESIGN_STRING_FIELDS = [
-  "name", "image", "categoryName", "categoryType",
+  "name", "image", "clientName", "categoryName", "categoryType",
   "notes", "addedToCodeSheet", "addedToNewDesignBrochure", "addedToThemedBrochure",
 ] as const;
 
@@ -41,6 +43,7 @@ export function serializeDesign(doc: Record<string, unknown> & { _id: unknown })
     id: String(doc._id),
     name: g("name"),
     image: g("image"),
+    clientName: g("clientName"),
     categoryName: g("categoryName"),
     categoryType: g("categoryType"),
     notes: g("notes"),

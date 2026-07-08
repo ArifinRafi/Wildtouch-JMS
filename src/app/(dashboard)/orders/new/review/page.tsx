@@ -11,23 +11,21 @@ import {
   Package,
   AlertTriangle,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { StepNav } from "@/components/orders/step-nav";
 import { useOrderDraft } from "@/lib/store/order-draft";
 
 export default function ReviewStepPage() {
   const router = useRouter();
-  const { draft, reset, patchDraft } = useOrderDraft();
+  const { draft, reset } = useOrderDraft();
   const [error, setError] = useState("");
 
   const lineItems = draft.lineItems ?? [];
   const totalUnits = lineItems.reduce((s, li) => s + li.qtyOrdered, 0);
   const ready = !!draft.planogram && lineItems.length > 0 && !!draft.client?.clientId;
 
-  // Invoice totals — item prices are £0 for now; the VAT % is entered here.
+  // Invoice totals — item prices are £0 for now; VAT rate comes from the client.
   const round2 = (n: number) => Math.round(n * 100) / 100;
-  const vatRate = draft.vatRate ?? 20;
+  const vatRate = draft.client?.vatRate ?? 0;
   const subtotal = round2(lineItems.reduce((s, li) => s + (li.lineTotal ?? 0), 0));
   const vat = round2((subtotal * vatRate) / 100);
   const grandTotal = round2(subtotal + vat);
@@ -49,7 +47,6 @@ export default function ReviewStepPage() {
           componentRequirements: draft.componentRequirements,
           client: draft.client,
           notes: draft.notes,
-          vatRate,
         }),
       });
       if (!res.ok) throw new Error("confirm failed");
@@ -143,31 +140,18 @@ export default function ReviewStepPage() {
         </div>
       </motion.div>
 
-      {/* VAT + invoice totals */}
+      {/* Invoice totals (VAT comes from the client) */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.15 }}
         className="rounded-2xl border border-border/40 bg-card/70 glass p-5">
         <div className="flex items-center gap-2 mb-4">
           <ReceiptText className="h-4 w-4 text-primary" /><h3 className="text-sm font-semibold">Invoice totals</h3>
         </div>
-        <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-          <div className="space-y-1.5 w-full sm:w-40">
-            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">VAT rate (%)</Label>
-            <Input
-              type="text"
-              inputMode="decimal"
-              value={String(vatRate)}
-              onChange={(e) => patchDraft({ vatRate: Math.max(0, parseFloat(e.target.value.replace(/[^0-9.]/g, "")) || 0) })}
-              className="rounded-xl bg-muted/30 border-border/40"
-              placeholder="20"
-            />
-          </div>
-          <div className="flex-1 rounded-xl border border-border/30 bg-muted/10 p-3 text-sm">
-            <div className="flex justify-between py-0.5"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums font-medium">{gbp(subtotal)}</span></div>
-            <div className="flex justify-between py-0.5"><span className="text-muted-foreground">VAT ({vatRate}%)</span><span className="tabular-nums font-medium">{gbp(vat)}</span></div>
-            <div className="flex justify-between py-1 mt-1 border-t border-border/30 font-bold"><span>Total incl. VAT</span><span className="tabular-nums text-primary">{gbp(grandTotal)}</span></div>
-          </div>
+        <div className="rounded-xl border border-border/30 bg-muted/10 p-3 text-sm max-w-sm ml-auto">
+          <div className="flex justify-between py-0.5"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums font-medium">{gbp(subtotal)}</span></div>
+          <div className="flex justify-between py-0.5"><span className="text-muted-foreground">VAT ({vatRate}%)</span><span className="tabular-nums font-medium">{gbp(vat)}</span></div>
+          <div className="flex justify-between py-1 mt-1 border-t border-border/30 font-bold"><span>Total incl. VAT</span><span className="tabular-nums text-primary">{gbp(grandTotal)}</span></div>
         </div>
-        <p className="text-[11px] text-muted-foreground mt-3">Item prices are £0 for now, so totals show £0 — the VAT rate is saved to the invoice and applied once pricing is added.</p>
+        <p className="text-[11px] text-muted-foreground mt-3">VAT is set per client (VAT rate <span className="font-semibold">{vatRate}%</span>) and applied to this invoice. Item prices are £0 for now, so totals show £0.</p>
       </motion.div>
 
       <p className="text-[11px] text-muted-foreground">Confirming creates the order and generates an invoice for this client.</p>

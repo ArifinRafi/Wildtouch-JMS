@@ -56,6 +56,10 @@ export interface Client {
   lastOrder: string;
   totalOrders: number;
 
+  // === Invoicing ===
+  /** VAT rate (percentage) applied to this client's invoices. */
+  vatRate?: number;
+
   // === Branding / parent company (optional) ===
   motherCompany?: string;
 

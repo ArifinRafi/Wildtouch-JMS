@@ -6,6 +6,7 @@ export interface Design {
   id: string;
   name: string;
   image: string;
+  clientName: string;
   categoryName: string;
   categoryType: string;
   notes: string;

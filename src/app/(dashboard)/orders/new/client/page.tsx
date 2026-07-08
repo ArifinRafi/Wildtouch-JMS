@@ -58,6 +58,7 @@ export default function ClientStepPage() {
         contactNumber: c.contactNumber ?? "",
         invoiceAddress,
         deliveryAddress,
+        vatRate: c.vatRate ?? 0,
       },
     });
   };

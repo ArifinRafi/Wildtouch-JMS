@@ -32,6 +32,8 @@ export interface OrderClientSnapshot {
   contactNumber?: string;
   invoiceAddress?: string;
   deliveryAddress?: string;
+  /** VAT rate (%) carried from the client, used for the invoice. */
+  vatRate?: number;
 }
 
 export interface Order {

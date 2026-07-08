@@ -40,7 +40,8 @@ export async function POST(request: NextRequest) {
   const round2 = (n: number) => Math.round(n * 100) / 100;
   const subtotal = round2(normalizedLines.reduce((s, l) => s + l.lineTotal, 0));
   const shipping = round2(Math.max(0, Number(body.shipping) || 0));
-  const vatRate = Math.max(0, Number(body.vatRate) || 0);
+  // VAT rate comes from the client (falls back to any body-provided rate).
+  const vatRate = Math.max(0, Number(body.client?.vatRate ?? body.vatRate) || 0);
   const vat = round2((subtotal * vatRate) / 100);
   const total = round2(subtotal + shipping + vat);
 
