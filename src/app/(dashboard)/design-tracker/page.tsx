@@ -200,20 +200,14 @@ export default function DesignTrackerPage() {
                             )}
                           </div>
                         </td>
-                        {/* Category: name + type */}
-                        <td className="px-3 py-3 min-w-[180px]">
+                        {/* Category type */}
+                        <td className="px-3 py-3 min-w-[150px]">
                           {editing ? (
-                            <div className="space-y-1.5">
-                              <input value={v.categoryName ?? ""} onChange={(e) => df("categoryName", e.target.value)} placeholder="Category name" className={cellInput} />
-                              <select value={v.categoryType ?? ""} onChange={(e) => df("categoryType", e.target.value)} className={cellInput}>
-                                {CATEGORY_TYPES.map((t) => <option key={t} value={t}>{t || "Select type…"}</option>)}
-                              </select>
-                            </div>
+                            <select value={v.categoryType ?? ""} onChange={(e) => df("categoryType", e.target.value)} className={cellInput}>
+                              {CATEGORY_TYPES.map((t) => <option key={t} value={t}>{t || "Select type…"}</option>)}
+                            </select>
                           ) : (
-                            <>
-                              <p className="text-sm">{d.categoryName || <span className="text-muted-foreground/40">—</span>}</p>
-                              {d.categoryType && <Badge variant="outline" className="mt-1 text-[10px] border-primary/20 bg-primary/5 text-primary">{d.categoryType}</Badge>}
-                            </>
+                            d.categoryType ? <Badge variant="outline" className="text-[10px] border-primary/20 bg-primary/5 text-primary">{d.categoryType}</Badge> : <span className="text-muted-foreground/40 text-sm">—</span>
                           )}
                         </td>
                         {/* Notes */}
