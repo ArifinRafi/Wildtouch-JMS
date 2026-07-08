@@ -169,7 +169,7 @@ export default function DesignTrackerPage() {
             <Button onClick={addRow} className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold"><Plus className="h-4 w-4" /> Add Design</Button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-visible min-h-[360px]">
             <table className="w-full min-w-[1120px] border-collapse">
               <thead>
                 <tr className="border-b border-border/30 bg-muted/20">
