@@ -1,9 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Receipt, FileText, Loader2, ArrowRight } from "lucide-react";
+import { Receipt, FileText, Loader2, ArrowRight, CalendarDays, X, Trash2, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 interface InvoiceListItem {
   id: string;
@@ -23,9 +31,23 @@ function fmtDate(iso: string | null) {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+/** Local-timezone YYYY-MM-DD key, to match a date-picker value against a timestamp. */
+function dateKey(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<InvoiceListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dateFilter, setDateFilter] = useState("");
+  const [role, setRole] = useState<string | null>(null);
+  const [toDelete, setToDelete] = useState<InvoiceListItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let on = true;
@@ -38,32 +60,93 @@ export default function InvoicesPage() {
       } catch (err) { console.error(err); }
       finally { if (on) setLoading(false); }
     })();
+    fetch("/api/users/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((u) => on && setRole(u?.role ?? null))
+      .catch(() => {});
     return () => { on = false; };
   }, []);
 
+  const isAdmin = role === "admin";
+
+  const filtered = useMemo(
+    () => (dateFilter ? invoices.filter((i) => dateKey(i.createdAt) === dateFilter) : invoices),
+    [invoices, dateFilter],
+  );
+
+  const confirmDelete = async () => {
+    if (!toDelete || deleting) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/invoices/${toDelete.id}`, { method: "DELETE" });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        // Removing an invoice also removes its order + any sibling invoices — drop them all locally.
+        setInvoices((prev) => prev.filter((i) => i.id !== toDelete.id && i.orderNumber !== toDelete.orderNumber));
+        void data;
+      }
+    } catch { /* keep the row on failure */ }
+    finally { setDeleting(false); setToDelete(null); }
+  };
+
   // Partial invoices count for their payment amount, not the full order total.
-  const totalValue = invoices.reduce((s, i) => s + (i.isPartial ? i.paymentAmount || 0 : i.total || 0), 0);
+  const totalValue = filtered.reduce((s, i) => s + (i.isPartial ? i.paymentAmount || 0 : i.total || 0), 0);
 
   return (
     <div className="space-y-6 pb-12">
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-        <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground/90 to-foreground/60 bg-clip-text text-transparent flex items-center gap-3">
-          <Receipt className="h-7 w-7 text-primary" /> Invoices
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {invoices.length} invoice{invoices.length === 1 ? "" : "s"} · <span className="font-semibold text-primary">£{totalValue.toLocaleString()}</span> total
-        </p>
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
+        className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground/90 to-foreground/60 bg-clip-text text-transparent flex items-center gap-3">
+            <Receipt className="h-7 w-7 text-primary" /> Invoices
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {filtered.length} invoice{filtered.length === 1 ? "" : "s"}{dateFilter ? " on this date" : ""} · <span className="font-semibold text-primary">£{totalValue.toLocaleString()}</span> total
+          </p>
+        </div>
+        {/* Date filter */}
+        <div className="flex items-center gap-1.5">
+          <div className="relative flex items-center">
+            <CalendarDays className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="h-9 rounded-xl border border-border/60 bg-card pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+              title="Show invoices for a specific date"
+            />
+          </div>
+          {dateFilter && (
+            <button
+              onClick={() => setDateFilter("")}
+              title="Clear date filter"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-card text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </motion.div>
 
       <div className="rounded-2xl border border-border/40 bg-card/70 glass overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-20 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /><span className="text-sm">Loading invoices…</span></div>
-        ) : invoices.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 border border-primary/15 mb-4"><Receipt className="h-7 w-7 text-primary" /></div>
-            <p className="text-base font-semibold">No invoices yet</p>
-            <p className="text-sm text-muted-foreground mt-1 mb-5 max-w-sm">Invoices are generated when you confirm an order.</p>
-            <Link href="/orders/new" className="rounded-xl bg-gradient-to-r from-primary to-indigo-500 px-4 py-2 text-sm font-semibold text-white">Create New Order</Link>
+            {dateFilter ? (
+              <>
+                <p className="text-base font-semibold">No invoices on {fmtDate(dateFilter)}</p>
+                <p className="text-sm text-muted-foreground mt-1 mb-5 max-w-sm">Try a different date, or clear the filter to see all invoices.</p>
+                <Button variant="outline" className="rounded-xl gap-1.5 border-border/40" onClick={() => setDateFilter("")}><X className="h-3.5 w-3.5" /> Clear date</Button>
+              </>
+            ) : (
+              <>
+                <p className="text-base font-semibold">No invoices yet</p>
+                <p className="text-sm text-muted-foreground mt-1 mb-5 max-w-sm">Invoices are generated when you confirm an order.</p>
+                <Link href="/orders/new" className="rounded-xl bg-gradient-to-r from-primary to-indigo-500 px-4 py-2 text-sm font-semibold text-white">Create New Order</Link>
+              </>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -76,11 +159,12 @@ export default function InvoicesPage() {
                   <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Date</th>
                   <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total</th>
                   <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"></th>
+                  {isAdmin && <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-12"></th>}
                 </tr>
               </thead>
               <tbody>
                 <AnimatePresence mode="popLayout">
-                  {invoices.map((inv, i) => (
+                  {filtered.map((inv, i) => (
                     <motion.tr key={inv.id} layout initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }}
                       transition={{ duration: 0.16, delay: Math.min(i, 12) * 0.012 }}
                       className="border-b border-border/20 hover:bg-accent/20 transition-colors last:border-b-0">
@@ -110,6 +194,14 @@ export default function InvoicesPage() {
                           View <ArrowRight className="h-3.5 w-3.5" />
                         </Link>
                       </td>
+                      {isAdmin && (
+                        <td className="px-5 py-3 text-right">
+                          <button onClick={() => setToDelete(inv)} title="Delete invoice"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/20 transition-colors">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </td>
+                      )}
                     </motion.tr>
                   ))}
                 </AnimatePresence>
@@ -118,6 +210,38 @@ export default function InvoicesPage() {
           </div>
         )}
       </div>
+
+      {/* Delete confirm (admin only) */}
+      <Dialog open={!!toDelete} onOpenChange={(o) => !o && !deleting && setToDelete(null)}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10 text-destructive shrink-0"><AlertTriangle className="h-5 w-5" /></div>
+              <div>
+                <DialogTitle className="text-base font-bold">Delete Invoice?</DialogTitle>
+                <p className="text-xs text-muted-foreground mt-1">This also deletes the linked order — and cannot be undone.</p>
+              </div>
+            </div>
+          </DialogHeader>
+          {toDelete && (
+            <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3">
+              <p className="text-sm font-semibold font-mono">{toDelete.invoiceNumber}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                {toDelete.client?.name || "No client"} · Order <span className="font-mono">{toDelete.orderNumber || "—"}</span>
+              </p>
+              <p className="text-[11px] text-destructive mt-2 font-medium">
+                Order {toDelete.orderNumber || ""} and all of its invoices (including partial invoices) will be permanently removed.
+              </p>
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="ghost" className="rounded-xl" onClick={() => setToDelete(null)} disabled={deleting}>Cancel</Button>
+            <Button variant="destructive" className="rounded-xl gap-1.5" onClick={confirmDelete} disabled={deleting}>
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

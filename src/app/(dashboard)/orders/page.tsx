@@ -16,6 +16,8 @@ import {
   FileText,
   Eye,
   Receipt,
+  CalendarDays,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -54,10 +56,26 @@ function formatDate(iso: string | null) {
   });
 }
 
+/** Local-timezone YYYY-MM-DD key, to match a date-picker value against a timestamp. */
+function dateKey(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export default function OrdersPage() {
   const { orders, loading, deleteOrder, refresh } = useOrders();
   const [toDelete, setToDelete] = useState<Order | null>(null);
   const [partialFor, setPartialFor] = useState<Order | null>(null);
+  const [dateFilter, setDateFilter] = useState("");
+
+  const filtered = useMemo(
+    () => (dateFilter ? orders.filter((o) => dateKey(o.createdAt) === dateFilter) : orders),
+    [orders, dateFilter],
+  );
 
   const stats = useMemo(() => {
     const total = orders.length;
@@ -91,17 +109,41 @@ export default function OrdersPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Create and track customer orders ·{" "}
-            <span className="font-semibold text-primary">{orders.length} total</span>
+            <span className="font-semibold text-primary">
+              {dateFilter ? `${filtered.length} on ${formatDate(dateFilter)}` : `${orders.length} total`}
+            </span>
           </p>
         </div>
-        <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-          <Link href="/orders/new">
-            <Button className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 hover:from-primary/90 hover:to-indigo-500/90 shadow-lg shadow-primary/20 text-white font-semibold">
-              <Plus className="h-4 w-4" />
-              Create New Order
-            </Button>
-          </Link>
-        </motion.div>
+        <div className="flex items-center gap-2">
+          {/* Date filter */}
+          <div className="relative flex items-center">
+            <CalendarDays className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              title="Show orders for a specific date"
+              className="h-9 rounded-xl border border-border/60 bg-card pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          {dateFilter && (
+            <button
+              onClick={() => setDateFilter("")}
+              title="Clear date filter"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-card text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+            <Link href="/orders/new">
+              <Button className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 hover:from-primary/90 hover:to-indigo-500/90 shadow-lg shadow-primary/20 text-white font-semibold">
+                <Plus className="h-4 w-4" />
+                Create New Order
+              </Button>
+            </Link>
+          </motion.div>
+        </div>
       </motion.div>
 
       {/* Stat chips */}
@@ -142,20 +184,32 @@ export default function OrdersPage() {
             <Loader2 className="h-5 w-5 animate-spin" />
             <span className="text-sm font-medium">Loading orders…</span>
           </div>
-        ) : orders.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 border border-primary/15 mb-4">
               <ShoppingCart className="h-7 w-7 text-primary" />
             </div>
-            <p className="text-base font-semibold">No orders yet</p>
-            <p className="text-sm text-muted-foreground mt-1 mb-5 max-w-sm">
-              Create your first order — pick a planogram, check stock, choose a client, and generate an invoice.
-            </p>
-            <Link href="/orders/new">
-              <Button className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold">
-                <Plus className="h-4 w-4" /> Create New Order
-              </Button>
-            </Link>
+            {dateFilter ? (
+              <>
+                <p className="text-base font-semibold">No orders on {formatDate(dateFilter)}</p>
+                <p className="text-sm text-muted-foreground mt-1 mb-5 max-w-sm">Try a different date, or clear the filter to see all orders.</p>
+                <Button variant="outline" className="gap-1.5 rounded-xl border-border/40" onClick={() => setDateFilter("")}>
+                  <X className="h-3.5 w-3.5" /> Clear date
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-base font-semibold">No orders yet</p>
+                <p className="text-sm text-muted-foreground mt-1 mb-5 max-w-sm">
+                  Create your first order — pick a planogram, check stock, choose a client, and generate an invoice.
+                </p>
+                <Link href="/orders/new">
+                  <Button className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold">
+                    <Plus className="h-4 w-4" /> Create New Order
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -174,7 +228,7 @@ export default function OrdersPage() {
               </thead>
               <tbody>
                 <AnimatePresence mode="popLayout">
-                  {orders.map((o, i) => (
+                  {filtered.map((o, i) => (
                     <motion.tr
                       key={o.id}
                       layout

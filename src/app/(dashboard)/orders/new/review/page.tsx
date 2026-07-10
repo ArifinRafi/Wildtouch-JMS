@@ -13,10 +13,12 @@ import {
 } from "lucide-react";
 import { StepNav } from "@/components/orders/step-nav";
 import { useOrderDraft } from "@/lib/store/order-draft";
+import { useAppStore } from "@/lib/store/app-store";
 
 export default function ReviewStepPage() {
   const router = useRouter();
   const { draft, reset } = useOrderDraft();
+  const { clients } = useAppStore();
   const [error, setError] = useState("");
 
   const lineItems = draft.lineItems ?? [];
@@ -24,8 +26,11 @@ export default function ReviewStepPage() {
   const ready = !!draft.planogram && lineItems.length > 0 && !!draft.client?.clientId;
 
   // Invoice totals — item prices are £0 for now; VAT rate comes from the client.
+  // Prefer the client record's CURRENT rate (matches what the confirm API applies);
+  // the draft snapshot is only a fallback in case the record isn't loaded.
   const round2 = (n: number) => Math.round(n * 100) / 100;
-  const vatRate = draft.client?.vatRate ?? 0;
+  const liveClient = clients.find((c) => c.id === draft.client?.clientId);
+  const vatRate = liveClient?.vatRate ?? draft.client?.vatRate ?? 0;
   const subtotal = round2(lineItems.reduce((s, li) => s + (li.lineTotal ?? 0), 0));
   const vat = round2((subtotal * vatRate) / 100);
   const grandTotal = round2(subtotal + vat);

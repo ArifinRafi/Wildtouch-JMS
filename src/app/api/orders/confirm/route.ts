@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Order, nextOrderNumber, serializeOrder } from "@/lib/models/Order";
 import { Invoice, nextInvoiceNumber, serializeInvoice } from "@/lib/models/Invoice";
+import { Client } from "@/lib/models/Client";
 import { logActivity } from "@/lib/activity";
 
 interface LineItemInput {
@@ -41,8 +42,18 @@ export async function POST(request: NextRequest) {
   const round2 = (n: number) => Math.round(n * 100) / 100;
   const subtotal = round2(normalizedLines.reduce((s, l) => s + l.lineTotal, 0));
   const shipping = round2(Math.max(0, Number(body.shipping) || 0));
-  // VAT rate comes from the client (falls back to any body-provided rate).
-  const vatRate = Math.max(0, Number(body.client?.vatRate ?? body.vatRate) || 0);
+  // VAT rate comes from the client. The snapshot the browser sends can be stale
+  // (drafted before the client's VAT was edited), so the CURRENT rate on the
+  // client record is authoritative; the submitted snapshot is only a fallback.
+  let vatRate = Math.max(0, Number(body.client?.vatRate ?? body.vatRate) || 0);
+  const clientId = String(body.client?.clientId ?? "").trim();
+  if (clientId) {
+    const clientDoc = await Client.findById(clientId).lean<{ vatRate?: unknown } | null>();
+    if (clientDoc && clientDoc.vatRate != null) {
+      const dbRate = Number(clientDoc.vatRate);
+      if (Number.isFinite(dbRate)) vatRate = Math.max(0, dbRate);
+    }
+  }
   const vat = round2((subtotal * vatRate) / 100);
   const total = round2(subtotal + shipping + vat);
 
