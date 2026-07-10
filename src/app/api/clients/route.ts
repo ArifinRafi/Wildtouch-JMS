@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Client, nextClientId, serializeClient } from "@/lib/models/Client";
+import { logActivity } from "@/lib/activity";
 
 export async function GET() {
   await connectDB();
@@ -23,5 +24,11 @@ export async function POST(request: NextRequest) {
   const _id = await nextClientId();
 
   const created = await Client.create({ _id, ...rest, name });
+  await logActivity({
+    action: "added",
+    entityType: "client",
+    entityName: name,
+    entityId: _id,
+  });
   return NextResponse.json(serializeClient(created.toObject()), { status: 201 });
 }

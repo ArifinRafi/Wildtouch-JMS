@@ -46,6 +46,8 @@ export interface Order {
   componentRequirements: OrderComponentRequirement[];
   subtotal: number;
   total: number;
+  /** Sum of partial-invoice payments issued so far. */
+  amountInvoiced?: number;
   notes: string;
   inventoryDeducted: boolean;
   createdAt: string | null;

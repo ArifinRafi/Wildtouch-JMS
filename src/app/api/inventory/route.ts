@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Component, serializeComponent } from "@/lib/models/Component";
+import { logActivity } from "@/lib/activity";
 
 export async function GET() {
   await connectDB();
@@ -26,6 +27,14 @@ export async function POST(request: NextRequest) {
     code: String(body.code ?? "").trim(),
     qtyAvailable: Math.max(0, Number(body.qtyAvailable) || 0),
     components,
+  });
+
+  await logActivity({
+    action: "added",
+    entityType: "component",
+    entityName: created.description || created.code || "component",
+    entityId: String(created._id),
+    quantity: created.qtyAvailable,
   });
 
   return NextResponse.json(serializeComponent(created.toObject()), { status: 201 });

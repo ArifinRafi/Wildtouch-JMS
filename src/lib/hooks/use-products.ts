@@ -11,6 +11,7 @@ export interface ProductComponent {
 export interface CatalogProduct {
   id: string;
   name: string;
+  group: string;
   planogramId: string;
   planogramName: string;
   segment: string;

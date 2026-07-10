@@ -39,6 +39,14 @@ const InvoiceSchema = new Schema(
     total: { type: Number, default: 0, min: 0 },
     currency: { type: String, default: "GBP" },
     status: { type: String, enum: ["issued", "paid", "void"], default: "issued" },
+    /** Partial (installment) invoice against the order's total. */
+    isPartial: { type: Boolean, default: false },
+    /** The amount this partial invoice charges now. */
+    paymentAmount: { type: Number, default: 0, min: 0 },
+    /** Sum of partial payments invoiced before this one. */
+    previouslyPaid: { type: Number, default: 0, min: 0 },
+    /** Order balance still to invoice after this payment. */
+    balanceDue: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true },
 );
@@ -69,6 +77,10 @@ export function serializeInvoice(doc: {
   total?: number;
   currency?: string;
   status?: string;
+  isPartial?: boolean;
+  paymentAmount?: number;
+  previouslyPaid?: number;
+  balanceDue?: number;
   createdAt?: Date;
   updatedAt?: Date;
 }) {
@@ -86,6 +98,10 @@ export function serializeInvoice(doc: {
     total: doc.total ?? 0,
     currency: doc.currency ?? "GBP",
     status: doc.status ?? "issued",
+    isPartial: doc.isPartial ?? false,
+    paymentAmount: doc.paymentAmount ?? 0,
+    previouslyPaid: doc.previouslyPaid ?? 0,
+    balanceDue: doc.balanceDue ?? 0,
     createdAt: doc.createdAt ?? null,
     updatedAt: doc.updatedAt ?? null,
   };

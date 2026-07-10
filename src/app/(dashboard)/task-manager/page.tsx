@@ -51,7 +51,16 @@ export default function TaskManagerPage() {
     return [...set].sort();
   }, [tasks]);
 
-  const dayTasks = useMemo(() => tasks.filter((t) => t.date === date), [tasks, date]);
+  // Tasks for the selected date, ordered High → Medium → Low priority.
+  const PRIORITY_RANK: Record<TaskPriority, number> = { high: 0, medium: 1, low: 2 };
+  const dayTasks = useMemo(
+    () =>
+      tasks
+        .filter((t) => t.date === date)
+        .sort((a, b) => (PRIORITY_RANK[a.priority] ?? 1) - (PRIORITY_RANK[b.priority] ?? 1)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tasks, date],
+  );
   const stats = useMemo(() => ({
     total: dayTasks.length,
     pending: dayTasks.filter((t) => t.status === "pending").length,

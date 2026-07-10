@@ -26,7 +26,7 @@ import { useProducts } from "@/lib/hooks/use-products";
 
 interface CellState { product: string; image: string; qty: number }
 interface RowState { description: string; cells: CellState[] }
-interface SideState { label: string; columns: number; rows: RowState[] }
+interface SideState { label: string; columns: number; rows: RowState[]; charms: string }
 
 const emptyCell = (): CellState => ({ product: "", image: "", qty: 0 });
 
@@ -60,6 +60,7 @@ export default function NewPlanogramPage() {
       label: `Side ${i + 1}`,
       columns: c,
       rows: Array.from({ length: r }, () => ({ description: "", cells: Array.from({ length: c }, emptyCell) })),
+      charms: "",
     })));
     setActive(0);
     setMode("edit");
@@ -241,6 +242,16 @@ export default function NewPlanogramPage() {
                   <Button variant="outline" size="sm" className="gap-1.5 rounded-xl border-border/40" onClick={addColumn}><Columns3 className="h-3.5 w-3.5" /> Add Column</Button>
                 </div>
                 <p className="text-xs text-muted-foreground">Side total: <span className="font-semibold text-foreground">{cfg ? sideTotal(cfg) : 0}</span></p>
+              </div>
+              {/* Charms for this side — shown at the bottom of the side on the view/print pages */}
+              <div className="flex items-center gap-3 px-4 py-3 border-t border-border/20">
+                <Label className="text-xs font-bold shrink-0">Charms:</Label>
+                <Input
+                  value={cfg?.charms ?? ""}
+                  onChange={(e) => mutateSide((s) => ({ ...s, charms: e.target.value }))}
+                  placeholder="e.g. Mermaid, Shark, Turtle, Seahorse, Octopus, Clown Fish"
+                  className="rounded-lg bg-muted/20 border-border/30 h-9 text-sm"
+                />
               </div>
             </motion.div>
           </AnimatePresence>

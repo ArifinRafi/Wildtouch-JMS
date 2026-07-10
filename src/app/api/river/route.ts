@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { RiverOrder, serializeRiverOrder } from "@/lib/models/RiverOrder";
+import { logActivity } from "@/lib/activity";
 
 export async function GET() {
   await connectDB();
@@ -42,5 +43,12 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const data = clean(body);
   const created = await RiverOrder.create(data);
+  await logActivity({
+    action: "added",
+    entityType: "river order",
+    entityName: data.product || data.orderNumber || "river order",
+    entityId: String(created._id),
+    quantity: data.quantity || null,
+  });
   return NextResponse.json(serializeRiverOrder(created.toObject()), { status: 201 });
 }

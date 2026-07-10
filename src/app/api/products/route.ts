@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Product, serializeProduct } from "@/lib/models/Product";
+import { logActivity } from "@/lib/activity";
 
 export async function GET(request: NextRequest) {
   await connectDB();
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
 
   const created = await Product.create({
     name,
+    group: String(body.group ?? "").trim(),
     planogramId: String(body.planogramId ?? "").trim(),
     planogramName: String(body.planogramName ?? "").trim(),
     segment: String(body.segment ?? "").trim(),
@@ -36,6 +38,13 @@ export async function POST(request: NextRequest) {
     defaultQty: Math.max(0, Number(body.defaultQty) || 1),
     code: String(body.code ?? "").trim(),
     components,
+  });
+
+  await logActivity({
+    action: "added",
+    entityType: "product",
+    entityName: name,
+    entityId: String(created._id),
   });
 
   return NextResponse.json(serializeProduct(created.toObject()), { status: 201 });

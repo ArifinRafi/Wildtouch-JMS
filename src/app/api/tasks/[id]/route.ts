@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isValidObjectId } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Task, serializeTask, TASK_STATUS, TASK_PRIORITY } from "@/lib/models/Task";
+import { logActivity } from "@/lib/activity";
 
 export async function PATCH(
   request: NextRequest,
@@ -23,6 +24,13 @@ export async function PATCH(
 
   const updated = await Task.findByIdAndUpdate(id, patch, { new: true }).lean();
   if (!updated) return NextResponse.json({ error: "not found" }, { status: 404 });
+  await logActivity({
+    action: patch.status === "complete" ? "completed" : "updated",
+    entityType: "task",
+    entityName: updated.taskName || "task",
+    entityId: id,
+    details: patch.status === "complete" ? "" : `changed ${Object.keys(patch).join(", ")}`,
+  });
   return NextResponse.json(serializeTask(updated));
 }
 
@@ -37,5 +45,11 @@ export async function DELETE(
   await connectDB();
   const deleted = await Task.findByIdAndDelete(id).lean();
   if (!deleted) return NextResponse.json({ error: "not found" }, { status: 404 });
+  await logActivity({
+    action: "deleted",
+    entityType: "task",
+    entityName: deleted.taskName || "task",
+    entityId: id,
+  });
   return NextResponse.json({ ok: true });
 }

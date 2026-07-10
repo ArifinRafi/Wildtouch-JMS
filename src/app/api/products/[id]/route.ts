@@ -3,6 +3,7 @@ import { isValidObjectId } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { requireAdmin, isResponse } from "@/lib/authz";
 import { Product, serializeProduct } from "@/lib/models/Product";
+import { logActivity } from "@/lib/activity";
 
 export async function GET(
   _request: NextRequest,
@@ -31,6 +32,7 @@ export async function PATCH(
 
   const patch: Record<string, unknown> = {};
   if (body.name !== undefined) patch.name = String(body.name).trim();
+  if (body.group !== undefined) patch.group = String(body.group).trim();
   if (body.segment !== undefined) patch.segment = String(body.segment).trim();
   if (body.code !== undefined) patch.code = String(body.code).trim();
   if (body.image !== undefined) patch.image = body.image ? String(body.image) : null;
@@ -45,6 +47,13 @@ export async function PATCH(
 
   const updated = await Product.findByIdAndUpdate(id, patch, { new: true }).lean();
   if (!updated) return NextResponse.json({ error: "not found" }, { status: 404 });
+  await logActivity({
+    action: "updated",
+    entityType: "product",
+    entityName: updated.name || "product",
+    entityId: id,
+    details: `changed ${Object.keys(patch).join(", ")}`,
+  });
   return NextResponse.json(serializeProduct(updated));
 }
 
@@ -62,5 +71,11 @@ export async function DELETE(
   await connectDB();
   const deleted = await Product.findByIdAndDelete(id).lean();
   if (!deleted) return NextResponse.json({ error: "not found" }, { status: 404 });
+  await logActivity({
+    action: "deleted",
+    entityType: "product",
+    entityName: deleted.name || "product",
+    entityId: id,
+  });
   return NextResponse.json({ ok: true });
 }

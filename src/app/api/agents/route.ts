@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Agent, nextAgentId, serializeAgent } from "@/lib/models/Agent";
+import { logActivity } from "@/lib/activity";
 
 export async function GET() {
   await connectDB();
@@ -23,6 +24,12 @@ export async function POST(request: NextRequest) {
     contactNumber: String(body.contactNumber ?? "").trim(),
     email: String(body.email ?? "").trim(),
     referredPoints: Math.max(0, Number(body.referredPoints) || 0),
+  });
+  await logActivity({
+    action: "added",
+    entityType: "agent",
+    entityName: name,
+    entityId: _id,
   });
   return NextResponse.json(serializeAgent(created.toObject()), { status: 201 });
 }

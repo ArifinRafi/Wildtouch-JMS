@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Design, serializeDesign, DESIGN_STRING_FIELDS } from "@/lib/models/Design";
+import { logActivity } from "@/lib/activity";
 
 export async function GET(request: NextRequest) {
   await connectDB();
@@ -17,5 +18,11 @@ export async function POST(request: NextRequest) {
   for (const k of DESIGN_STRING_FIELDS) data[k] = String(body[k] ?? "").trim();
   if (body.completed !== undefined) data.completed = Boolean(body.completed);
   const created = await Design.create(data);
+  await logActivity({
+    action: "added",
+    entityType: "design",
+    entityName: String(data.name || "design"),
+    entityId: String(created._id),
+  });
   return NextResponse.json(serializeDesign(created.toObject()), { status: 201 });
 }

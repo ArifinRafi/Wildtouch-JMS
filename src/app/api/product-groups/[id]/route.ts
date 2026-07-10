@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isValidObjectId } from "mongoose";
 import { connectDB } from "@/lib/db";
-import { DesignCategory } from "@/lib/models/DesignCategory";
+import { ProductGroup } from "@/lib/models/ProductGroup";
 import { logActivity } from "@/lib/activity";
 
 export async function DELETE(
@@ -13,12 +13,12 @@ export async function DELETE(
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
   }
   await connectDB();
-  const deleted = await DesignCategory.findByIdAndDelete(id).lean();
+  const deleted = await ProductGroup.findByIdAndDelete(id).lean();
   if (!deleted) return NextResponse.json({ error: "not found" }, { status: 404 });
   await logActivity({
     action: "deleted",
-    entityType: "design category",
-    entityName: deleted.name || "category",
+    entityType: "product group",
+    entityName: deleted.name || "group",
     entityId: id,
   });
   return NextResponse.json({ ok: true });

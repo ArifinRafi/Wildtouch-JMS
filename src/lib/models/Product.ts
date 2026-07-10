@@ -17,6 +17,8 @@ const ProductComponentSchema = new Schema(
 const ProductSchema = new Schema(
   {
     name: { type: String, required: true },
+    /** Optional product group/family name (managed via the ProductGroup list). */
+    group: { type: String, default: "" },
     planogramId: { type: String, default: "", index: true },
     planogramName: { type: String, default: "" },
     segment: { type: String, default: "" },
@@ -38,6 +40,7 @@ export const Product: Model<ProductDoc> =
 export function serializeProduct(doc: {
   _id: unknown;
   name: string;
+  group?: string;
   planogramId: string;
   planogramName?: string;
   segment?: string;
@@ -49,6 +52,7 @@ export function serializeProduct(doc: {
   return {
     id: String(doc._id),
     name: doc.name,
+    group: doc.group ?? "",
     planogramId: doc.planogramId,
     planogramName: doc.planogramName ?? "",
     segment: doc.segment ?? "",

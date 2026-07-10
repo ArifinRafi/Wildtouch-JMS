@@ -3,6 +3,7 @@ import { isValidObjectId } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { requireAdmin, isResponse } from "@/lib/authz";
 import { Component, serializeComponent } from "@/lib/models/Component";
+import { logActivity } from "@/lib/activity";
 
 export async function PATCH(
   request: NextRequest,
@@ -35,6 +36,14 @@ export async function PATCH(
   if (!updated) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
+  await logActivity({
+    action: "updated",
+    entityType: "component",
+    entityName: updated.description || updated.code || "component",
+    entityId: id,
+    quantity: patch.qtyAvailable !== undefined ? Number(patch.qtyAvailable) : null,
+    details: `changed ${Object.keys(patch).join(", ")}`,
+  });
   return NextResponse.json(serializeComponent(updated));
 }
 
@@ -55,5 +64,11 @@ export async function DELETE(
   if (!deleted) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
+  await logActivity({
+    action: "deleted",
+    entityType: "component",
+    entityName: deleted.description || deleted.code || "component",
+    entityId: id,
+  });
   return NextResponse.json({ ok: true });
 }

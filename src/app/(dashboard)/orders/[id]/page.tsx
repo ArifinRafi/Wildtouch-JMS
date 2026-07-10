@@ -15,6 +15,7 @@ import {
   Boxes,
   ClipboardList,
   LayoutGrid,
+  Receipt,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,17 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { Order } from "@/lib/store/orders-store";
+import { PartialInvoiceDialog } from "@/components/orders/partial-invoice-dialog";
+
+interface OrderInvoiceRef {
+  id: string;
+  invoiceNumber: string;
+  orderNumber: string;
+  isPartial?: boolean;
+  paymentAmount?: number;
+  total?: number;
+  createdAt?: string | null;
+}
 
 const STATUS_STYLE: Record<string, string> = {
   received: "bg-blue-500/10 border-blue-500/25 text-blue-600 dark:text-blue-400",
@@ -54,10 +66,11 @@ export default function OrderViewPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [order, setOrder] = useState<Order | null>(null);
-  const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [invoices, setInvoices] = useState<OrderInvoiceRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showPartial, setShowPartial] = useState(false);
 
   useEffect(() => {
     let on = true;
@@ -67,15 +80,14 @@ export default function OrderViewPage() {
         if (!res.ok) { if (on) setNotFound(true); return; }
         const data: Order = await res.json();
         if (on) setOrder(data);
-        // Best-effort: find a matching invoice to link to.
+        // Best-effort: collect this order's invoices (main + partials).
         try {
           const inv = await fetch("/api/invoices");
           if (inv.ok) {
-            const list: { id: string; orderNumber: string }[] = await inv.json();
-            const m = list.find((x) => x.orderNumber === data.orderNumber);
-            if (on && m) setInvoiceId(m.id);
+            const list: OrderInvoiceRef[] = await inv.json();
+            if (on) setInvoices(list.filter((x) => x.orderNumber === data.orderNumber));
           }
-        } catch { /* invoice link is optional */ }
+        } catch { /* invoice links are optional */ }
       } catch { if (on) setNotFound(true); }
       finally { if (on) setLoading(false); }
     })();
@@ -157,13 +169,20 @@ ${order.notes ? `<div class="box"><h4>Notes</h4><div class="muted">${esc(order.n
             </Badge>
           </div>
           <div className="flex items-center gap-2">
-            {invoiceId && (
-              <Link href={`/invoices/${invoiceId}`}>
+            {invoices.find((x) => !x.isPartial) && (
+              <Link href={`/invoices/${invoices.find((x) => !x.isPartial)!.id}`}>
                 <Button variant="outline" className="gap-2 rounded-xl border-border/40">
                   <FileText className="h-3.5 w-3.5 text-primary" /> Invoice
                 </Button>
               </Link>
             )}
+            <Button
+              variant="outline"
+              onClick={() => setShowPartial(true)}
+              className="gap-2 rounded-xl border-indigo-500/30 bg-indigo-500/5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/15"
+            >
+              <Receipt className="h-3.5 w-3.5" /> Partial Invoice
+            </Button>
             <Button onClick={printOrder} className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold">
               <Printer className="h-4 w-4" /> Download PDF
             </Button>
@@ -288,9 +307,68 @@ ${order.notes ? `<div class="box"><h4>Notes</h4><div class="muted">${esc(order.n
         )}
       </motion.div>
 
+      {/* Side panel: billing + planogram summary */}
+      <div className="w-full lg:w-72 lg:shrink-0 space-y-4 lg:sticky lg:top-4">
+      {/* Billing — order total vs partial invoices issued */}
+      {(order.total || 0) > 0 && (
+        <motion.aside initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4, delay: 0.05 }}
+          className="rounded-2xl border border-border/40 bg-card/70 glass p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Receipt className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold">Billing</h3>
+          </div>
+          {(() => {
+            const total = order.total || 0;
+            const invoiced = Math.min(total, order.amountInvoiced ?? 0);
+            const remaining = Math.max(0, total - invoiced);
+            const pct = total > 0 ? Math.min(100, Math.round((invoiced / total) * 100)) : 0;
+            return (
+              <>
+                <div className="space-y-1.5 text-sm">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Order total</span><span className="font-bold tabular-nums">£{total.toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Invoiced</span><span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">£{invoiced.toFixed(2)}</span></div>
+                  <div className="flex justify-between border-t border-border/30 pt-1.5"><span className="font-semibold">Remaining</span><span className="font-black tabular-nums text-primary">£{remaining.toFixed(2)}</span></div>
+                </div>
+                <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted/40">
+                  <div className={cn("h-full rounded-full transition-all", remaining <= 0 ? "bg-emerald-500" : "bg-gradient-to-r from-primary to-indigo-500")} style={{ width: `${pct}%` }} />
+                </div>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">{remaining <= 0 ? "Fully invoiced" : `${pct}% invoiced via partial invoices`}</p>
+                {remaining > 0 && (
+                  <Button onClick={() => setShowPartial(true)} variant="outline" size="sm"
+                    className="mt-3 w-full gap-1.5 rounded-xl border-indigo-500/30 bg-indigo-500/5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/15 text-xs font-semibold">
+                    <Receipt className="h-3.5 w-3.5" /> New Partial Invoice
+                  </Button>
+                )}
+              </>
+            );
+          })()}
+          {invoices.length > 0 && (
+            <div className="mt-4 border-t border-border/30 pt-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Invoices for this order</p>
+              <div className="space-y-1.5">
+                {invoices.map((inv) => (
+                  <Link key={inv.id} href={`/invoices/${inv.id}`} className="flex items-center justify-between gap-2 text-sm group">
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
+                      <span className="font-mono font-semibold truncate group-hover:text-primary group-hover:underline">{inv.invoiceNumber}</span>
+                      {inv.isPartial && (
+                        <span className="shrink-0 rounded-md bg-indigo-500/10 border border-indigo-500/25 px-1.5 py-0.5 text-[9px] font-bold uppercase text-indigo-600 dark:text-indigo-400">Partial</span>
+                      )}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-xs font-semibold text-muted-foreground">
+                      £{(inv.isPartial ? inv.paymentAmount ?? 0 : inv.total ?? 0).toFixed(2)}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </motion.aside>
+      )}
+
       {/* Planogram summary — same panel as on the invoice */}
       <motion.aside initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4, delay: 0.1 }}
-        className="w-full lg:w-72 lg:shrink-0 rounded-2xl border border-border/40 bg-card/70 glass p-5 lg:sticky lg:top-4">
+        className="rounded-2xl border border-border/40 bg-card/70 glass p-5">
         <div className="flex items-center gap-2 mb-1">
           <LayoutGrid className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-semibold">Planogram</h3>
@@ -316,6 +394,14 @@ ${order.notes ? `<div class="box"><h4>Notes</h4><div class="muted">${esc(order.n
         </div>
       </motion.aside>
       </div>
+      </div>
+
+      {/* Partial invoice */}
+      <PartialInvoiceDialog
+        order={showPartial ? order : null}
+        onClose={() => setShowPartial(false)}
+        onCreated={(_, amountInvoiced) => setOrder((o) => (o ? { ...o, amountInvoiced } : o))}
+      />
 
       {/* Delete confirm */}
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>

@@ -20,6 +20,8 @@ export interface CustomPlanogramSide {
   label: string;
   columns: number;
   rows: CustomPlanogramRow[];
+  /** Free-text charms list shown under the side, e.g. "Mermaid, Shark, Turtle". */
+  charms?: string;
 }
 export interface CustomPlanogram {
   id: string;

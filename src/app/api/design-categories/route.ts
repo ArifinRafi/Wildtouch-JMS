@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { DesignCategory, serializeDesignCategory, DEFAULT_DESIGN_CATEGORIES } from "@/lib/models/DesignCategory";
+import { logActivity } from "@/lib/activity";
 
 export async function GET() {
   await connectDB();
@@ -24,5 +25,11 @@ export async function POST(request: NextRequest) {
   if (existing) return NextResponse.json(serializeDesignCategory(existing), { status: 200 });
 
   const created = await DesignCategory.create({ name });
+  await logActivity({
+    action: "added",
+    entityType: "design category",
+    entityName: name,
+    entityId: String(created._id),
+  });
   return NextResponse.json(serializeDesignCategory(created.toObject()), { status: 201 });
 }

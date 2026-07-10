@@ -7,6 +7,7 @@ import {
   computeTotalUnits,
   cleanSides,
 } from "@/lib/models/Planogram";
+import { logActivity } from "@/lib/activity";
 
 export async function GET() {
   await connectDB();
@@ -41,6 +42,13 @@ export async function POST(request: NextRequest) {
     sides,
     totalUnits: computeTotalUnits(sides),
     source: "custom",
+  });
+
+  await logActivity({
+    action: "added",
+    entityType: "planogram",
+    entityName: name,
+    entityId: String(created._id),
   });
 
   return NextResponse.json(serializePlanogram(created.toObject()), { status: 201 });

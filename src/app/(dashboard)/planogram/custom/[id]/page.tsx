@@ -76,11 +76,12 @@ export default function CustomPlanogramPage() {
         const rows = s.rows
           .map((r, i) => `<tr><td class="rn">${i + 1}</td><td>${esc(r.description) || "—"}</td>${r.cells.map(cellHtml).join("")}<td class="sl">${rowTotal(r.cells)}</td></tr>`)
           .join("");
-        return `<h3>${s.label} — ${total} units</h3><table><thead><tr><th>Row</th><th>Description</th>${colHead}<th class="sl">Total</th></tr></thead><tbody>${rows}</tbody></table>`;
+        const charms = s.charms?.trim() ? `<p class="charms"><strong>Charms:</strong> ${esc(s.charms)}</p>` : "";
+        return `<h3>${s.label} — ${total} units</h3><table><thead><tr><th>Row</th><th>Description</th>${colHead}<th class="sl">Total</th></tr></thead><tbody>${rows}</tbody></table>${charms}`;
       })
       .join("");
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Planogram — ${pg.name}</title>
-<style>@page{size:A4;margin:18mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:"Segoe UI",Arial,sans-serif;font-size:11px;color:#111}header{border-bottom:2px solid #6d28d9;padding-bottom:8px;margin-bottom:16px}.brand{font-size:18px;font-weight:800;color:#6d28d9}.sub{font-size:12px;color:#555;margin-top:2px}h3{margin:16px 0 6px;color:#6d28d9;font-size:13px}table{width:100%;border-collapse:collapse;margin-bottom:8px}th{background:#6d28d9;color:#fff;padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;text-align:left}td{padding:6px 10px;border-bottom:1px solid #e5e7eb}.rn{width:40px;text-align:center;font-weight:700;color:#6d28d9}.sl{text-align:right;font-weight:700;width:70px}.cell{text-align:center;width:90px}.cell .pn{font-size:9px;color:#374151;line-height:1.2}.cell .q{font-weight:700;color:#6d28d9}</style></head><body>
+<style>@page{size:A4;margin:18mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:"Segoe UI",Arial,sans-serif;font-size:11px;color:#111}header{border-bottom:2px solid #6d28d9;padding-bottom:8px;margin-bottom:16px}.brand{font-size:18px;font-weight:800;color:#6d28d9}.sub{font-size:12px;color:#555;margin-top:2px}h3{margin:16px 0 6px;color:#6d28d9;font-size:13px}table{width:100%;border-collapse:collapse;margin-bottom:8px}th{background:#6d28d9;color:#fff;padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;text-align:left}td{padding:6px 10px;border-bottom:1px solid #e5e7eb}.rn{width:40px;text-align:center;font-weight:700;color:#6d28d9}.sl{text-align:right;font-weight:700;width:70px}.cell{text-align:center;width:90px}.cell .pn{font-size:9px;color:#374151;line-height:1.2}.cell .q{font-weight:700;color:#6d28d9}.charms{margin:2px 0 12px;font-size:11px;color:#374151}</style></head><body>
 <header><div class="brand">Wildtouch JMS — Planogram</div><div class="sub">${pg.name} · ${pg.sides.length} sides · ${pg.totalUnits} total units</div></header>
 ${sidesHtml}</body></html>`;
     const win = window.open("", "_blank", "width=900,height=700");
@@ -213,6 +214,11 @@ ${sidesHtml}</body></html>`;
           <div className="px-4 py-3 border-t border-border/20 bg-muted/10 text-right">
             <p className="text-xs text-muted-foreground">Side total: <span className="font-semibold text-foreground">{sideTotals[active]}</span></p>
           </div>
+          {side.charms?.trim() && (
+            <div className="px-4 py-3 border-t border-border/20">
+              <p className="text-sm"><span className="font-bold">Charms:</span> <span className="text-muted-foreground">{side.charms}</span></p>
+            </div>
+          )}
         </motion.div>
       </AnimatePresence>
 

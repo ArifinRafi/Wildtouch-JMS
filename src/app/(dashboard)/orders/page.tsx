@@ -15,6 +15,7 @@ import {
   Loader2,
   FileText,
   Eye,
+  Receipt,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useOrders, type Order } from "@/lib/store/orders-store";
+import { PartialInvoiceDialog } from "@/components/orders/partial-invoice-dialog";
 
 const STATUS_STYLE: Record<string, string> = {
   received: "bg-blue-500/10 border-blue-500/25 text-blue-600 dark:text-blue-400",
@@ -53,8 +55,9 @@ function formatDate(iso: string | null) {
 }
 
 export default function OrdersPage() {
-  const { orders, loading, deleteOrder } = useOrders();
+  const { orders, loading, deleteOrder, refresh } = useOrders();
   const [toDelete, setToDelete] = useState<Order | null>(null);
+  const [partialFor, setPartialFor] = useState<Order | null>(null);
 
   const stats = useMemo(() => {
     const total = orders.length;
@@ -204,6 +207,18 @@ export default function OrdersPage() {
                       </td>
                       <td className="px-5 py-3 align-middle text-right tabular-nums text-sm font-semibold">
                         £{(o.total || 0).toLocaleString()}
+                        {(o.amountInvoiced ?? 0) > 0 && (o.total || 0) > 0 && (
+                          <p className={cn(
+                            "text-[10px] font-semibold mt-0.5",
+                            (o.amountInvoiced ?? 0) >= (o.total || 0)
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-amber-600 dark:text-amber-400",
+                          )}>
+                            {(o.amountInvoiced ?? 0) >= (o.total || 0)
+                              ? "Fully invoiced"
+                              : `£${(o.amountInvoiced ?? 0).toFixed(2)} invoiced · £${Math.max(0, (o.total || 0) - (o.amountInvoiced ?? 0)).toFixed(2)} left`}
+                          </p>
+                        )}
                       </td>
                       <td className="px-5 py-3 align-middle">
                         <Badge
@@ -227,6 +242,16 @@ export default function OrdersPage() {
                           <motion.button
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
+                            onClick={() => setPartialFor(o)}
+                            title="Create partial invoice"
+                            className="flex h-8 items-center gap-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 px-2.5 transition-colors"
+                          >
+                            <Receipt className="h-3.5 w-3.5" />
+                            <span className="text-[11px] font-semibold">Partial</span>
+                          </motion.button>
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
                             onClick={() => setToDelete(o)}
                             title="Delete order"
                             className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/20 transition-colors"
@@ -243,6 +268,13 @@ export default function OrdersPage() {
           </div>
         )}
       </motion.div>
+
+      {/* Partial invoice */}
+      <PartialInvoiceDialog
+        order={partialFor}
+        onClose={() => setPartialFor(null)}
+        onCreated={() => { refresh().catch(() => {}); }}
+      />
 
       {/* Delete confirm */}
       <Dialog open={!!toDelete} onOpenChange={(o) => !o && setToDelete(null)}>

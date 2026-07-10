@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Order, nextOrderNumber, serializeOrder } from "@/lib/models/Order";
 import { Invoice, nextInvoiceNumber, serializeInvoice } from "@/lib/models/Invoice";
+import { logActivity } from "@/lib/activity";
 
 interface LineItemInput {
   code?: string;
@@ -83,6 +84,15 @@ export async function POST(request: NextRequest) {
     total,
     currency: "GBP",
     status: "issued",
+  });
+
+  await logActivity({
+    action: "confirmed",
+    entityType: "order",
+    entityName: orderNumber,
+    entityId: String(order._id),
+    quantity: normalizedLines.reduce((s, l) => s + l.qtyOrdered, 0),
+    details: `for ${body.client?.name || body.client?.clientId || "client"} — invoice ${invoiceNumber} created`,
   });
 
   return NextResponse.json(

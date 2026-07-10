@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Package,
@@ -36,8 +36,10 @@ import { uploadImage, thumbUrl } from "@/lib/cloudinary";
 const PAGE_SIZE = 50;
 
 interface ProductComponentRow { code: string; label: string; qtyPerUnit: number; componentId?: string }
-interface ProductForm { name: string; code: string; image: string; components: ProductComponentRow[] }
-const emptyForm = (): ProductForm => ({ name: "", code: "", image: "", components: [] });
+interface ProductForm { name: string; code: string; group: string; image: string; components: ProductComponentRow[] }
+const emptyForm = (): ProductForm => ({ name: "", code: "", group: "", image: "", components: [] });
+
+interface ProductGroupOption { id: string; name: string }
 
 export default function ProductsPage() {
   const { products, loading, createProduct, updateProduct, deleteProduct } = useProducts();
@@ -53,6 +55,37 @@ export default function ProductsPage() {
   const [toDelete, setToDelete] = useState<CatalogProduct | null>(null);
   const [uploadingImg, setUploadingImg] = useState(false);
   const [imgError, setImgError] = useState("");
+
+  // Managed product-group list (saved, searchable, deletable) — same pattern as Design Tracker categories.
+  const [groups, setGroups] = useState<ProductGroupOption[]>([]);
+  useEffect(() => {
+    let on = true;
+    fetch("/api/product-groups")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d: ProductGroupOption[]) => { if (on) setGroups(d); })
+      .catch(() => {});
+    return () => { on = false; };
+  }, []);
+
+  const ensureGroup = useCallback(async (name: string) => {
+    const n = name.trim();
+    if (!n || groups.some((g) => g.name.toLowerCase() === n.toLowerCase())) return;
+    try {
+      const res = await fetch("/api/product-groups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: n }),
+      });
+      if (!res.ok) return;
+      const created: ProductGroupOption = await res.json();
+      setGroups((prev) => (prev.some((g) => g.id === created.id) ? prev : [...prev, created].sort((a, b) => a.name.localeCompare(b.name))));
+    } catch { /* non-blocking */ }
+  }, [groups]);
+
+  const deleteGroup = useCallback((id: string) => {
+    setGroups((prev) => prev.filter((g) => g.id !== id));
+    fetch(`/api/product-groups/${id}`, { method: "DELETE" }).catch(() => {});
+  }, []);
 
   const handleImageUpload = async (file: File | undefined) => {
     if (!file) return;
@@ -74,7 +107,7 @@ export default function ProductsPage() {
     if (!search.trim()) return products;
     const q = search.toLowerCase();
     return products.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q),
+      (p) => p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q) || (p.group ?? "").toLowerCase().includes(q),
     );
   }, [products, search]);
 
@@ -101,6 +134,7 @@ export default function ProductsPage() {
     setForm({
       name: p.name,
       code: p.code,
+      group: p.group ?? "",
       image: p.image ?? "",
       components: p.components.map((c) => ({ code: c.code, label: c.label || c.code, qtyPerUnit: c.qtyPerUnit || 1, componentId: inventory.find((it) => it.code && it.code === c.code)?.id })),
     });
@@ -118,14 +152,17 @@ export default function ProductsPage() {
     const payload = {
       name: form.name.trim(),
       code: form.code.trim(),
+      group: form.group.trim(),
       image: form.image.trim() || null,
       components: form.components.map((c) => ({ code: c.code, label: c.label, qtyPerUnit: c.qtyPerUnit })),
     };
     if (!payload.name) return;
+    // Persist the group into the managed list so it can be reused/searched/deleted next time.
+    if (payload.group) await ensureGroup(payload.group);
     if (editing) await updateProduct(editing.id, payload);
     else await createProduct(payload);
     closeDialogs();
-  }, [form, editing, updateProduct, createProduct]);
+  }, [form, editing, updateProduct, createProduct, ensureGroup]);
 
   const confirmDelete = useCallback(() => {
     if (!toDelete) return;
@@ -169,7 +206,7 @@ export default function ProductsPage() {
       {/* Search */}
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
-        <Input placeholder="Search products by name or code…" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+        <Input placeholder="Search products by name, code or group…" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }}
           className="pl-9 rounded-xl bg-card/70 glass border-border/40" />
       </div>
 
@@ -184,6 +221,7 @@ export default function ProductsPage() {
                 <tr className="border-b border-border/30 bg-muted/20">
                   <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-12">#</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Product</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Group</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Code</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Components</th>
                   <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
@@ -192,7 +230,7 @@ export default function ProductsPage() {
               <tbody>
                 <AnimatePresence mode="popLayout">
                   {pageItems.length === 0 ? (
-                    <tr><td colSpan={5}><div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                    <tr><td colSpan={6}><div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                       <Package className="h-10 w-10 mb-3 opacity-20" /><p className="text-sm font-medium">No products yet — create one</p></div></td></tr>
                   ) : (
                     pageItems.map((p, i) => (
@@ -208,6 +246,9 @@ export default function ProductsPage() {
                             </div>
                             <p className="text-sm font-medium">{p.name}</p>
                           </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {p.group ? <span className="inline-flex items-center rounded-md bg-indigo-500/10 border border-indigo-500/25 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">{p.group}</span> : <span className="text-xs text-muted-foreground/40">—</span>}
                         </td>
                         <td className="px-4 py-3">
                           {p.code ? <span className="inline-flex items-center rounded-md bg-muted/50 border border-border/40 px-2 py-0.5 text-xs font-mono font-semibold">{p.code}</span> : <span className="text-xs text-muted-foreground/40">—</span>}
@@ -269,6 +310,18 @@ export default function ProductsPage() {
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Code</Label>
                 <Input className="rounded-xl bg-muted/30 border-border/40 font-mono" placeholder="e.g. BC01" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} />
               </div>
+            </div>
+
+            {/* Group — type a new name (saved on create) or pick/delete a saved one */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Group</Label>
+              <GroupCombo
+                value={form.group}
+                groups={groups}
+                onChange={(v) => setForm((f) => ({ ...f, group: v }))}
+                onDeleteGroup={deleteGroup}
+              />
+              <p className="text-[11px] text-muted-foreground">Type a new group name to create it, or pick a saved one. New groups are saved when you create the product.</p>
             </div>
 
             {/* Product image */}
@@ -374,6 +427,56 @@ export default function ProductsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/**
+ * Group field: type a new name (created on save), or search/pick a saved group.
+ * Each saved group in the dropdown has a cross to delete it from the managed list.
+ */
+function GroupCombo({
+  value, groups, onChange, onDeleteGroup,
+}: {
+  value: string;
+  groups: ProductGroupOption[];
+  onChange: (v: string) => void;
+  onDeleteGroup: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const q = value.trim().toLowerCase();
+  const matches = useMemo(() => (q ? groups.filter((g) => g.name.toLowerCase().includes(q)) : groups), [q, groups]);
+  const exact = groups.some((g) => g.name.toLowerCase() === q);
+
+  return (
+    <div className="relative">
+      <Input
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 200)}
+        placeholder="Type a group name / select…"
+        className="rounded-xl bg-muted/30 border-border/40"
+      />
+      {open && (
+        <div className="absolute z-30 mt-1 w-full rounded-xl border border-border/40 bg-popover shadow-xl max-h-56 overflow-y-auto">
+          {value.trim() && !exact && (
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(value.trim()); setOpen(false); }}
+              className="flex w-full items-center px-3 py-2 text-left text-xs font-semibold text-primary hover:bg-accent/40 border-b border-border/10">
+              + Use &ldquo;{value.trim()}&rdquo; as a new group
+            </button>
+          )}
+          {matches.map((g) => (
+            <div key={g.id} className="flex items-center justify-between gap-1 px-1.5 py-0.5 hover:bg-accent/40 border-b border-border/10 last:border-b-0">
+              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(g.name); setOpen(false); }}
+                className="flex-1 min-w-0 truncate text-left text-sm px-1.5 py-1.5">{g.name}</button>
+              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onDeleteGroup(g.id)} title="Delete group"
+                className="shrink-0 p-1.5 text-muted-foreground/60 hover:text-destructive"><X className="h-3.5 w-3.5" /></button>
+            </div>
+          ))}
+          {matches.length === 0 && !value.trim() && <p className="px-3 py-2.5 text-xs text-muted-foreground">No groups yet — type one above.</p>}
+        </div>
+      )}
     </div>
   );
 }

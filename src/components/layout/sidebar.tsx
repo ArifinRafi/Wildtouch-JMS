@@ -26,6 +26,7 @@ import {
   Waves,
   PenTool,
   ListChecks,
+  History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -43,6 +44,7 @@ type NavItem = {
   icon: typeof LayoutDashboard;
   section: string;
   children?: NavChild[];
+  adminOnly?: boolean;
 };
 
 const navigation: NavItem[] = [
@@ -70,6 +72,7 @@ const navigation: NavItem[] = [
   { title: "Agents", href: "/agents", icon: UserCheck, section: "operations" },
   { title: "Branding Cards", href: "/branding-cards", icon: CreditCard, section: "operations" },
   { title: "Invoicing", href: "/invoices", icon: Receipt, section: "finance" },
+  { title: "History", href: "/history", icon: History, section: "admin", adminOnly: true },
   { title: "Settings", href: "/settings", icon: Settings, section: "admin" },
 ];
 
@@ -91,6 +94,15 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
   // Track which parent items are expanded (by title)
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  // Role of the signed-in user — admin-only items stay hidden until confirmed.
+  const [role, setRole] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/users/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((u) => setRole(u?.role ?? null))
+      .catch(() => setRole(null));
+  }, []);
 
   // Auto-expand a parent if one of its children is the active route
   useEffect(() => {
@@ -115,14 +127,16 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     });
   };
 
-  const sections = navigation.reduce(
-    (acc, item) => {
-      if (!acc[item.section]) acc[item.section] = [];
-      acc[item.section].push(item);
-      return acc;
-    },
-    {} as Record<string, NavItem[]>
-  );
+  const sections = navigation
+    .filter((item) => !item.adminOnly || role === "admin")
+    .reduce(
+      (acc, item) => {
+        if (!acc[item.section]) acc[item.section] = [];
+        acc[item.section].push(item);
+        return acc;
+      },
+      {} as Record<string, NavItem[]>
+    );
 
   return (
     <motion.aside

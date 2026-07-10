@@ -6,6 +6,7 @@ import {
   serializeWhiteboard,
   cleanWhiteboardBody,
 } from "@/lib/models/WhiteboardOrder";
+import { logActivity } from "@/lib/activity";
 
 export async function GET() {
   await connectDB();
@@ -20,5 +21,11 @@ export async function POST(request: NextRequest) {
   if (!data.customerName) return NextResponse.json({ error: "customerName is required" }, { status: 400 });
   const _id = await nextWhiteboardId();
   const created = await WhiteboardOrderModel.create({ _id, ...data });
+  await logActivity({
+    action: "added",
+    entityType: "whiteboard order",
+    entityName: String(data.customerName ?? "") || _id,
+    entityId: _id,
+  });
   return NextResponse.json(serializeWhiteboard(created.toObject()), { status: 201 });
 }

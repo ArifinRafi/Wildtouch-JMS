@@ -3,6 +3,7 @@ import { isValidObjectId } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { requireAdmin, isResponse } from "@/lib/authz";
 import { RiverOrder, serializeRiverOrder } from "@/lib/models/RiverOrder";
+import { logActivity } from "@/lib/activity";
 
 const NUM = new Set(["quantity", "quantityReceived", "valueRmb", "valueGbp"]);
 const STR = new Set([
@@ -34,6 +35,13 @@ export async function PATCH(
 
   const updated = await RiverOrder.findByIdAndUpdate(id, patch, { new: true }).lean();
   if (!updated) return NextResponse.json({ error: "not found" }, { status: 404 });
+  await logActivity({
+    action: "updated",
+    entityType: "river order",
+    entityName: updated.product || updated.orderNumber || "river order",
+    entityId: id,
+    details: `changed ${Object.keys(patch).join(", ")}`,
+  });
   return NextResponse.json(serializeRiverOrder(updated));
 }
 
@@ -51,5 +59,11 @@ export async function DELETE(
   await connectDB();
   const deleted = await RiverOrder.findByIdAndDelete(id).lean();
   if (!deleted) return NextResponse.json({ error: "not found" }, { status: 404 });
+  await logActivity({
+    action: "deleted",
+    entityType: "river order",
+    entityName: deleted.product || deleted.orderNumber || "river order",
+    entityId: id,
+  });
   return NextResponse.json({ ok: true });
 }

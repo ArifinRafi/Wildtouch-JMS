@@ -8,6 +8,7 @@ import {
   computeTotalUnits,
   cleanSides,
 } from "@/lib/models/Planogram";
+import { logActivity } from "@/lib/activity";
 
 export async function GET(
   _request: NextRequest,
@@ -44,6 +45,13 @@ export async function PATCH(
 
   const updated = await Planogram.findByIdAndUpdate(id, patch, { new: true }).lean();
   if (!updated) return NextResponse.json({ error: "not found" }, { status: 404 });
+  await logActivity({
+    action: "updated",
+    entityType: "planogram",
+    entityName: updated.name || "planogram",
+    entityId: id,
+    details: `changed ${Object.keys(patch).join(", ")}`,
+  });
   return NextResponse.json(serializePlanogram(updated));
 }
 
@@ -61,5 +69,11 @@ export async function DELETE(
   await connectDB();
   const deleted = await Planogram.findByIdAndDelete(id).lean();
   if (!deleted) return NextResponse.json({ error: "not found" }, { status: 404 });
+  await logActivity({
+    action: "deleted",
+    entityType: "planogram",
+    entityName: deleted.name || "planogram",
+    entityId: id,
+  });
   return NextResponse.json({ ok: true });
 }

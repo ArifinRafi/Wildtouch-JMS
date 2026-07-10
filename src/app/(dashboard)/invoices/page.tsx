@@ -12,6 +12,9 @@ interface InvoiceListItem {
   client: { name?: string };
   total: number;
   status: string;
+  isPartial?: boolean;
+  paymentAmount?: number;
+  balanceDue?: number;
   createdAt: string | null;
 }
 
@@ -38,7 +41,8 @@ export default function InvoicesPage() {
     return () => { on = false; };
   }, []);
 
-  const totalValue = invoices.reduce((s, i) => s + (i.total || 0), 0);
+  // Partial invoices count for their payment amount, not the full order total.
+  const totalValue = invoices.reduce((s, i) => s + (i.isPartial ? i.paymentAmount || 0 : i.total || 0), 0);
 
   return (
     <div className="space-y-6 pb-12">
@@ -85,12 +89,22 @@ export default function InvoicesPage() {
                         <Link href={`/invoices/${inv.id}`} className="flex items-center gap-2 group">
                           <FileText className="h-4 w-4 text-primary shrink-0" />
                           <span className="text-sm font-mono font-semibold group-hover:text-primary transition-colors">{inv.invoiceNumber}</span>
+                          {inv.isPartial && (
+                            <span className="rounded-md bg-indigo-500/10 border border-indigo-500/25 px-1.5 py-0.5 text-[9px] font-bold uppercase text-indigo-600 dark:text-indigo-400">Partial</span>
+                          )}
                         </Link>
                         <p className="text-[11px] text-muted-foreground mt-0.5 pl-6">Order {inv.orderNumber}</p>
                       </td>
                       <td className="px-5 py-3 text-sm font-medium">{inv.client?.name || "—"}</td>
                       <td className="px-5 py-3 text-xs text-muted-foreground">{fmtDate(inv.createdAt)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold tabular-nums">£{(inv.total || 0).toLocaleString()}</td>
+                      <td className="px-5 py-3 text-right text-sm font-semibold tabular-nums">
+                        £{(inv.isPartial ? inv.paymentAmount || 0 : inv.total || 0).toLocaleString()}
+                        {inv.isPartial && (
+                          <p className="text-[10px] font-medium text-muted-foreground mt-0.5">
+                            of £{(inv.total || 0).toLocaleString()} · £{(inv.balanceDue || 0).toLocaleString()} left
+                          </p>
+                        )}
+                      </td>
                       <td className="px-5 py-3 text-right">
                         <Link href={`/invoices/${inv.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
                           View <ArrowRight className="h-3.5 w-3.5" />

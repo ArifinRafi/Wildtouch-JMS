@@ -3,6 +3,7 @@ import { isValidObjectId } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { RiverOrder, serializeRiverOrder } from "@/lib/models/RiverOrder";
 import { Component } from "@/lib/models/Component";
+import { logActivity } from "@/lib/activity";
 
 /**
  * Complete (fully or partially) a River order. `qty` units are moved into the
@@ -46,6 +47,16 @@ export async function POST(
 
   order.quantityReceived = Math.max(0, (order.quantityReceived ?? 0) + qty);
   await order.save();
+
+  const outstanding = Math.max(0, (order.quantity ?? 0) - (order.quantityReceived ?? 0));
+  await logActivity({
+    action: "received",
+    entityType: "river order",
+    entityName: order.componentLabel || order.product || order.orderNumber || "river order",
+    entityId: id,
+    quantity: qty,
+    details: outstanding > 0 ? `partial — ${outstanding} still outstanding` : "order fully received, added to inventory",
+  });
 
   return NextResponse.json({ order: serializeRiverOrder(order.toObject()), componentUpdated: true });
 }

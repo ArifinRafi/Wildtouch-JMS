@@ -29,6 +29,8 @@ const PlanogramSideSchema = new Schema(
     label: { type: String, default: "" },
     columns: { type: Number, default: 1, min: 1 },
     rows: { type: [PlanogramRowSchema], default: [] },
+    /** Free-text charms list shown under the side, e.g. "Mermaid, Shark, Turtle". */
+    charms: { type: String, default: "" },
   },
   { _id: false },
 );
@@ -67,7 +69,7 @@ interface RawRow {
   image?: string | null;
   defaultQty?: number | null;
 }
-interface RawSide { label?: string | null; columns?: number | null; rows?: RawRow[] | null }
+interface RawSide { label?: string | null; columns?: number | null; rows?: RawRow[] | null; charms?: string | null }
 
 /** Normalize one cell (object | legacy number) into { product, image, qty }. */
 function normalizeCell(c: number | RawCell | null | undefined, fallback: { product: string; image: string }): CleanCell {
@@ -93,7 +95,7 @@ function normalizeRow(r: RawRow): { description: string; cells: CleanCell[] } {
 const emptyCell = (): CleanCell => ({ product: "", image: "", qty: 0 });
 
 /** Normalize raw side input (from the API) into clean, column-padded sides. */
-export function cleanSides(raw: unknown): { label: string; columns: number; rows: { description: string; cells: CleanCell[] }[] }[] {
+export function cleanSides(raw: unknown): { label: string; columns: number; rows: { description: string; cells: CleanCell[] }[]; charms: string }[] {
   if (!Array.isArray(raw)) return [];
   return (raw as RawSide[]).map((s, i) => {
     const columns = Math.max(1, Number(s.columns) || 1);
@@ -105,7 +107,12 @@ export function cleanSides(raw: unknown): { label: string; columns: number; rows
         return { description: description.trim(), cells: cells.slice(0, columns) };
       })
       .filter((r) => r.description || r.cells.some((c) => c.product || c.qty > 0));
-    return { label: String(s.label ?? `Side ${i + 1}`).trim() || `Side ${i + 1}`, columns, rows };
+    return {
+      label: String(s.label ?? `Side ${i + 1}`).trim() || `Side ${i + 1}`,
+      columns,
+      rows,
+      charms: String(s.charms ?? "").trim(),
+    };
   });
 }
 
@@ -143,7 +150,7 @@ export function serializePlanogram(doc: {
         while (r.cells.length < columns) r.cells.push(emptyCell());
         if (r.cells.length > columns) r.cells = r.cells.slice(0, columns);
       }
-      return { label: s.label ?? "", columns, rows };
+      return { label: s.label ?? "", columns, rows, charms: s.charms ?? "" };
     }),
     createdAt: doc.createdAt ?? null,
     updatedAt: doc.updatedAt ?? null,

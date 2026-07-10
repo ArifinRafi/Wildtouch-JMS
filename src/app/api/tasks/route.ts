@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Task, serializeTask, TASK_STATUS, TASK_PRIORITY } from "@/lib/models/Task";
+import { logActivity } from "@/lib/activity";
 
 export async function GET(request: NextRequest) {
   await connectDB();
@@ -21,6 +22,13 @@ export async function POST(request: NextRequest) {
     taskName: String(body.taskName ?? "").trim(),
     status,
     priority,
+  });
+  await logActivity({
+    action: "added",
+    entityType: "task",
+    entityName: created.taskName || "task",
+    entityId: String(created._id),
+    details: created.employeeName ? `for ${created.employeeName} on ${created.date}` : `on ${created.date}`,
   });
   return NextResponse.json(serializeTask(created.toObject()), { status: 201 });
 }
