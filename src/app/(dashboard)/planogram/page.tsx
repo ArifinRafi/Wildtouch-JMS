@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { LayoutGrid, Box, ArrowRight, Plus, Loader2 } from "lucide-react";
-import { useCustomPlanograms } from "@/lib/hooks/use-planograms";
+import { useRouter } from "next/navigation";
+import { LayoutGrid, Box, ArrowRight, Plus, Loader2, Pencil, Copy } from "lucide-react";
+import { useCustomPlanograms, type CustomPlanogram } from "@/lib/hooks/use-planograms";
 
 const planogramTypes = [
   { name: "4 Sided Floor Stand",           href: "/planogram/4-sided-floor-stand",               sides: 4, total: 768, color: "from-violet-500 to-purple-600", ready: true },
@@ -14,6 +16,26 @@ const planogramTypes = [
 
 export default function PlanogramPage() {
   const { planograms, loading } = useCustomPlanograms();
+  const router = useRouter();
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+
+  /** Copy a custom planogram (same sides + charms) and open the new copy. */
+  const duplicate = async (p: CustomPlanogram) => {
+    if (duplicatingId) return;
+    setDuplicatingId(p.id);
+    try {
+      const res = await fetch("/api/planograms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: `${p.name} (Copy)`, sides: p.sides }),
+      });
+      if (!res.ok) throw new Error("duplicate failed");
+      const created = await res.json();
+      router.push(`/planogram/custom/${created.id}`);
+    } catch {
+      setDuplicatingId(null);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -124,6 +146,17 @@ export default function PlanogramPage() {
                     </p>
                   </div>
                 </Link>
+                <div className="flex items-center border-t border-border/30">
+                  <Link href={`/planogram/custom/${p.id}/edit`}
+                    className="flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-semibold text-muted-foreground hover:text-primary hover:bg-accent/30 transition-colors">
+                    <Pencil className="h-3 w-3" /> Edit
+                  </Link>
+                  <div className="h-6 w-px bg-border/30" />
+                  <button onClick={() => duplicate(p)} disabled={!!duplicatingId}
+                    className="flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-semibold text-muted-foreground hover:text-primary hover:bg-accent/30 transition-colors disabled:opacity-50">
+                    {duplicatingId === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Copy className="h-3 w-3" />} Duplicate
+                  </button>
+                </div>
               </motion.div>
             ))
           )}

@@ -12,6 +12,8 @@ import {
   Trash2,
   AlertTriangle,
   ShoppingCart,
+  Pencil,
+  Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +37,7 @@ export default function CustomPlanogramPage() {
   const [notFound, setNotFound] = useState(false);
   const [active, setActive] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
 
   useEffect(() => {
     let on = true;
@@ -63,6 +66,24 @@ export default function CustomPlanogramPage() {
     await fetch(`/api/planograms/${id}`, { method: "DELETE" });
     router.push("/planogram");
   }, [id, router]);
+
+  /** Create a copy of this planogram (same sides + charms) and open it. */
+  const duplicate = useCallback(async () => {
+    if (!pg || duplicating) return;
+    setDuplicating(true);
+    try {
+      const res = await fetch("/api/planograms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: `${pg.name} (Copy)`, sides: pg.sides }),
+      });
+      if (!res.ok) throw new Error("duplicate failed");
+      const created = await res.json();
+      router.push(`/planogram/custom/${created.id}`);
+    } catch {
+      setDuplicating(false);
+    }
+  }, [pg, duplicating, router]);
 
   const printAll = () => {
     if (!pg) return;
@@ -129,6 +150,14 @@ ${sidesHtml}</body></html>`;
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Link href={`/planogram/custom/${id}/edit`}>
+              <Button variant="outline" className="gap-2 rounded-xl border-border/40">
+                <Pencil className="h-3.5 w-3.5 text-primary" /> Edit
+              </Button>
+            </Link>
+            <Button variant="outline" onClick={duplicate} disabled={duplicating} className="gap-2 rounded-xl border-border/40">
+              {duplicating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5 text-primary" />} Duplicate
+            </Button>
             <Link href="/orders/new">
               <Button variant="outline" className="gap-2 rounded-xl border-border/40">
                 <ShoppingCart className="h-3.5 w-3.5 text-primary" /> Order
