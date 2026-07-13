@@ -48,6 +48,12 @@ export default function ProductsPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
 
+  // Seed the search box from a ?q= param (used by the global header search).
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) setSearch(q);
+  }, []);
+
   const [editing, setEditing] = useState<CatalogProduct | null>(null);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState<ProductForm>(emptyForm());

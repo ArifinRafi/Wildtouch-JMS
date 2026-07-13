@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, Search, Menu, Sparkles, LogOut, Settings } from "lucide-react";
+import { Bell, Menu, Sparkles, LogOut, Settings } from "lucide-react";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { motion } from "framer-motion";
 import { useRole } from "@/lib/hooks/use-role";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { GlobalSearch } from "@/components/layout/global-search";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,14 +48,8 @@ export function Header({ onMenuClick }: HeaderProps) {
         <Menu className="h-5 w-5" />
       </motion.button>
 
-      {/* Search */}
-      <div className="relative hidden flex-1 sm:block max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
-        <Input
-          placeholder="Search clients, products, orders..."
-          className="pl-9 bg-muted/40 border-border/30 rounded-xl focus:bg-card/60 transition-colors"
-        />
-      </div>
+      {/* Global search */}
+      <GlobalSearch />
 
       <div className="ml-auto flex items-center gap-2">
         {/* AI Hint */}
