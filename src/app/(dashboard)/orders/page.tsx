@@ -18,6 +18,7 @@ import {
   Receipt,
   CalendarDays,
   X,
+  ClipboardList,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -86,6 +87,23 @@ export default function OrdersPage() {
     const value = orders.reduce((s, o) => s + (o.total || 0), 0);
     return { total, active, dispatched, value };
   }, [orders]);
+
+  // Invoice totals for the current view (respects the date filter above):
+  //  - invoiceGenerated: full invoice value of these orders (each order = one invoice)
+  //  - partialGenerated: amount billed via partial invoices
+  //  - outstanding: remaining un-invoiced balance on orders that used partial invoicing (0 otherwise)
+  const invoiceSummary = useMemo(() => {
+    let invoiceGenerated = 0, partialGenerated = 0, outstanding = 0;
+    for (const o of filtered) {
+      const total = o.total || 0;
+      const partial = o.amountInvoiced || 0;
+      invoiceGenerated += total;
+      partialGenerated += partial;
+      if (partial > 0) outstanding += Math.max(0, total - partial);
+    }
+    return { invoiceGenerated, partialGenerated, outstanding };
+  }, [filtered]);
+  const gbp = (n: number) => `£${(n || 0).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const confirmDelete = useCallback(() => {
     if (!toDelete) return;
@@ -213,7 +231,7 @@ export default function OrdersPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] border-collapse">
+            <table className="w-full min-w-[940px] border-collapse">
               <thead>
                 <tr className="border-b border-border/30 bg-muted/20">
                   <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-12">#</th>
@@ -223,6 +241,7 @@ export default function OrdersPage() {
                   <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Items</th>
                   <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total</th>
                   <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
+                  <th className="px-5 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Packing Slip</th>
                   <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
                 </tr>
               </thead>
@@ -282,6 +301,18 @@ export default function OrdersPage() {
                           {statusLabel(o.status)}
                         </Badge>
                       </td>
+                      <td className="px-5 py-3 align-middle text-center">
+                        <Link href={`/orders/${o.id}/packing-list`} title="Open packing slip — view & download PDF">
+                          <motion.span
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 px-2.5 transition-colors"
+                          >
+                            <ClipboardList className="h-3.5 w-3.5" />
+                            <span className="text-[11px] font-semibold">Packing List</span>
+                          </motion.span>
+                        </Link>
+                      </td>
                       <td className="px-5 py-3 align-middle">
                         <div className="flex items-center justify-end gap-1.5">
                           <Link href={`/orders/${o.id}`} title="Open order">
@@ -322,6 +353,38 @@ export default function OrdersPage() {
           </div>
         )}
       </motion.div>
+
+      {/* Invoice summary — respects the date filter above */}
+      {!loading && (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1 }}
+          className="rounded-2xl border border-border/40 bg-card/70 glass p-5"
+        >
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <Receipt className="h-4 w-4 text-primary" /> Invoice Summary
+            </h3>
+            <span className="text-xs text-muted-foreground">
+              {dateFilter ? formatDate(dateFilter) : "All dates"} · {filtered.length} order{filtered.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { label: "Total Invoice Generated", value: invoiceSummary.invoiceGenerated, sub: "Full invoice value of these orders", color: "text-primary bg-primary/5 border-primary/20" },
+              { label: "Partial Invoiced", value: invoiceSummary.partialGenerated, sub: "Billed via partial invoices", color: "text-indigo-600 dark:text-indigo-400 bg-indigo-500/5 border-indigo-500/20" },
+              { label: "Outstanding Balance", value: invoiceSummary.outstanding, sub: "Remaining on partially-invoiced orders", color: "text-amber-600 dark:text-amber-400 bg-amber-500/5 border-amber-500/20" },
+            ].map((t) => (
+              <div key={t.label} className={cn("rounded-xl border px-4 py-3", t.color)}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">{t.label}</p>
+                <p className="text-2xl font-black tabular-nums mt-1">{gbp(t.value)}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">{t.sub}</p>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       {/* Partial invoice */}
       <PartialInvoiceDialog
