@@ -10,6 +10,19 @@ export const DESIGN_STAGES = [
 /** Reaching this stage marks the design finished → available in River. */
 export const DESIGN_FINAL_STAGE = "New Design Template";
 
+/** One recorded stage transition (kept as an audit trail; reverts carry a note). */
+const StageHistorySchema = new Schema(
+  {
+    from: { type: String, default: "" },
+    to: { type: String, default: "" },
+    note: { type: String, default: "" },
+    /** True when this was a move back to an earlier stage. */
+    revert: { type: Boolean, default: false },
+    at: { type: Date, default: Date.now },
+  },
+  { _id: false },
+);
+
 /**
  * A new component design being tracked (Design Tracker "Live New Designs").
  * Format/checklist columns hold a dropdown value; moving a design to the final
@@ -31,6 +44,8 @@ const DesignSchema = new Schema(
     addedToThemedBrochure: { type: String, default: "" },
     /** Pipeline stage; the final stage keeps `completed` in sync (see the API). */
     stage: { type: String, default: "New Design Request" },
+    /** Audit trail of stage changes (from → to, date, and note for reverts). */
+    stageHistory: { type: [StageHistorySchema], default: [] },
     /** True when the design is at the final stage — kept in sync with `stage`. Drives River. */
     completed: { type: Boolean, default: false },
     /** Set once the completed design has been ordered or dismissed in River. */
@@ -67,6 +82,15 @@ export function serializeDesign(doc: Record<string, unknown> & { _id: unknown })
     addedToNewDesignBrochure: g("addedToNewDesignBrochure"),
     addedToThemedBrochure: g("addedToThemedBrochure"),
     stage,
+    stageHistory: Array.isArray(doc.stageHistory)
+      ? (doc.stageHistory as Record<string, unknown>[]).map((h) => ({
+          from: String(h?.from ?? ""),
+          to: String(h?.to ?? ""),
+          note: String(h?.note ?? ""),
+          revert: Boolean(h?.revert),
+          at: h?.at ? new Date(h.at as string).toISOString() : null,
+        }))
+      : [],
     completed,
     riverAcknowledged: Boolean(doc.riverAcknowledged),
     createdAt: (doc.createdAt as Date) ?? null,

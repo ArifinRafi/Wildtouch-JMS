@@ -26,8 +26,25 @@ export async function PATCH(
     if (STR.has(k)) patch[k] = String(body[k] ?? "").trim();
     else if (k === "completed" || k === "riverAcknowledged") patch[k] = Boolean(body[k]);
   }
+
   // Stage is authoritative for completion: set it and sync `completed` (drives River).
+  let historyEntry: { from: string; to: string; note: string; revert: boolean; at: Date } | null = null;
   if (body.stage !== undefined && DESIGN_STAGES.includes(body.stage)) {
+    const prevStage = String(existing.stage || (existing.completed ? DESIGN_FINAL_STAGE : "New Design Request"));
+    if (body.stage !== prevStage) {
+      const fromIdx = DESIGN_STAGES.indexOf(prevStage as (typeof DESIGN_STAGES)[number]);
+      const toIdx = DESIGN_STAGES.indexOf(body.stage);
+      const isRevert = fromIdx > -1 && toIdx > -1 && toIdx < fromIdx;
+      const note = String(body.stageNote ?? "").trim();
+      // Moving a design back to an earlier stage requires a reason.
+      if (isRevert && !note) {
+        return NextResponse.json(
+          { error: "A note is required when moving a design back to an earlier stage." },
+          { status: 400 },
+        );
+      }
+      historyEntry = { from: prevStage, to: body.stage, note, revert: isRevert, at: new Date() };
+    }
     patch.stage = body.stage;
     const nowFinal = body.stage === DESIGN_FINAL_STAGE;
     patch.completed = nowFinal;
@@ -35,7 +52,9 @@ export async function PATCH(
     if (nowFinal && !existing.completed) patch.riverAcknowledged = false;
   }
 
-  const updated = await Design.findByIdAndUpdate(id, patch, { new: true }).lean();
+  const update: Record<string, unknown> = { $set: patch };
+  if (historyEntry) update.$push = { stageHistory: historyEntry };
+  const updated = await Design.findByIdAndUpdate(id, update, { new: true }).lean();
   if (!updated) return NextResponse.json({ error: "not found" }, { status: 404 });
   const reachedFinal = patch.completed === true;
   await logActivity({
@@ -43,11 +62,9 @@ export async function PATCH(
     entityType: "design",
     entityName: updated.name || "design",
     entityId: id,
-    details: reachedFinal
-      ? `stage → ${DESIGN_FINAL_STAGE}`
-      : patch.stage
-        ? `stage → ${patch.stage}`
-        : `changed ${Object.keys(patch).join(", ")}`,
+    details: historyEntry
+      ? `stage ${historyEntry.revert ? "reverted" : "→"} ${historyEntry.from} → ${historyEntry.to}${historyEntry.note ? ` (${historyEntry.note})` : ""}`
+      : `changed ${Object.keys(patch).join(", ")}`,
   });
   return NextResponse.json(serializeDesign(updated));
 }

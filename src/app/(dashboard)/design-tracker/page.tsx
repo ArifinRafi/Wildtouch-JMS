@@ -42,6 +42,12 @@ const STAGE_STYLE: Record<string, string> = {
   "New Design Template": "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
 };
 
+function fmtHistoryDate(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" })} ${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
+}
+
 export default function DesignTrackerPage() {
   const { designs, loading, addDesign, updateDesign, deleteDesign } = useDesigns();
   const { isAdmin } = useRole();
@@ -92,6 +98,10 @@ export default function DesignTrackerPage() {
   const [saving, setSaving] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
 
+  // Mandatory-note prompt shown when a design is moved back to an earlier stage.
+  const [revertPrompt, setRevertPrompt] = useState<{ design: Design; from: string; to: string } | null>(null);
+  const [revertNote, setRevertNote] = useState("");
+
   const liveCount = useMemo(() => designs.filter((d) => !d.completed).length, [designs]);
   const completedCount = useMemo(() => designs.filter((d) => d.completed).length, [designs]);
 
@@ -130,7 +140,6 @@ export default function DesignTrackerPage() {
       notes: (draft.notes ?? "").trim(), addedToCodeSheet: (draft.addedToCodeSheet ?? "").trim(),
       addedToNewDesignBrochure: (draft.addedToNewDesignBrochure ?? "").trim(),
       addedToThemedBrochure: (draft.addedToThemedBrochure ?? "").trim(),
-      stage: draft.stage ?? "New Design Request",
     };
     try {
       await ensureCategory(payload.categoryType ?? "");
@@ -147,8 +156,42 @@ export default function DesignTrackerPage() {
     catch { /* ignore */ } finally { setUploadingId(null); }
   }, []);
 
-  // Change a design's pipeline stage; the server keeps `completed` (River) in sync.
-  const setStage = (d: Design, stage: string) => { updateDesign(d.id, { stage }).catch(() => {}); };
+  const stageIndex = (s: string) => DESIGN_STAGES.indexOf(s as (typeof DESIGN_STAGES)[number]);
+  const currentStage = (d: Design) => d.stage || (d.completed ? DESIGN_FINAL_STAGE : "New Design Request");
+
+  // Persist a stage change; if the row is mid-edit, save the draft fields too so nothing is lost.
+  const commitStage = useCallback(async (d: Design, stage: string, stageNote?: string) => {
+    const patch: NewDesign = { stage };
+    if (stageNote !== undefined) patch.stageNote = stageNote;
+    if (editingId === d.id) {
+      Object.assign(patch, {
+        name: (draft.name ?? "").trim(), image: draft.image ?? "",
+        clientName: (draft.clientName ?? "").trim(),
+        categoryName: (draft.categoryName ?? "").trim(), categoryType: draft.categoryType ?? "",
+        notes: (draft.notes ?? "").trim(), addedToCodeSheet: (draft.addedToCodeSheet ?? "").trim(),
+        addedToNewDesignBrochure: (draft.addedToNewDesignBrochure ?? "").trim(),
+        addedToThemedBrochure: (draft.addedToThemedBrochure ?? "").trim(),
+      });
+      await ensureCategory(patch.categoryType ?? "");
+      setEditingId(null); setNewRowId(null); setDraft({});
+    }
+    updateDesign(d.id, patch).catch(() => {});
+  }, [editingId, draft, updateDesign, ensureCategory]);
+
+  // From the Stage dropdown: a move to an earlier stage opens the mandatory-note prompt.
+  const requestStage = useCallback((d: Design, stage: string) => {
+    const cur = currentStage(d);
+    if (stage === cur) return;
+    const isRevert = stageIndex(stage) > -1 && stageIndex(cur) > -1 && stageIndex(stage) < stageIndex(cur);
+    if (isRevert) { setRevertNote(""); setRevertPrompt({ design: d, from: cur, to: stage }); return; }
+    commitStage(d, stage);
+  }, [commitStage]);
+
+  const confirmRevert = useCallback(() => {
+    if (!revertPrompt || !revertNote.trim()) return;
+    commitStage(revertPrompt.design, revertPrompt.to, revertNote.trim());
+    setRevertPrompt(null); setRevertNote("");
+  }, [revertPrompt, revertNote, commitStage]);
 
   const confirmDelete = useCallback(async () => {
     if (!toDelete) return;
@@ -208,17 +251,17 @@ export default function DesignTrackerPage() {
           </div>
         ) : (
           <div className="overflow-x-auto overflow-y-visible min-h-[360px]">
-            <table className="w-full min-w-[1120px] border-collapse">
+            <table className="w-full min-w-[1320px] border-collapse">
               <thead>
                 <tr className="border-b border-border/30 bg-muted/20">
-                  {["Design", "Client", "Category", "Notes", "Code Sheet", "New Brochure", "Themed Brochure", "Stage", ""].map((h, i) => (
+                  {["Design", "Client", "Category", "Notes", "Code Sheet", "New Brochure", "Themed Brochure", "Stage", "History", ""].map((h, i) => (
                     <th key={i} className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={9} className="py-12 text-center text-sm text-muted-foreground">No {tab === "completed" ? "completed" : "live"} designs.</td></tr>
+                  <tr><td colSpan={10} className="py-12 text-center text-sm text-muted-foreground">No {tab === "completed" ? "completed" : "live"} designs.</td></tr>
                 )}
                 <AnimatePresence mode="popLayout">
                   {filtered.map((d) => {
@@ -286,15 +329,14 @@ export default function DesignTrackerPage() {
                             )}
                           </td>
                         ))}
-                        {/* Stage — while editing it lives in the draft (saved with the name);
-                            on a locked row it applies immediately. */}
+                        {/* Stage — an immediate control; moving to an earlier stage prompts for a note. */}
                         <td className="px-3 py-3 min-w-[190px]">
                           {(() => {
-                            const cur = v.stage || (v.completed ? DESIGN_FINAL_STAGE : "New Design Request");
+                            const cur = d.stage || (d.completed ? DESIGN_FINAL_STAGE : "New Design Request");
                             return (
                               <select
                                 value={cur}
-                                onChange={(e) => (editing ? df("stage", e.target.value) : setStage(d, e.target.value))}
+                                onChange={(e) => requestStage(d, e.target.value)}
                                 title={cur === DESIGN_FINAL_STAGE ? "Finished — available in River" : "Set the design stage"}
                                 className={cn("h-8 w-full rounded-lg border px-2 text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30", STAGE_STYLE[cur] ?? STAGE_STYLE["New Design Request"])}
                               >
@@ -304,6 +346,25 @@ export default function DesignTrackerPage() {
                               </select>
                             );
                           })()}
+                        </td>
+                        {/* History — stage changes with dates; reverts show their note. */}
+                        <td className="px-3 py-3 min-w-[210px] max-w-[260px] align-top">
+                          {d.stageHistory && d.stageHistory.length > 0 ? (
+                            <div className="space-y-1.5 max-h-[132px] overflow-y-auto pr-1">
+                              {[...d.stageHistory].reverse().map((h, i) => (
+                                <div key={i} className="rounded-md border border-border/30 bg-muted/20 px-2 py-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-muted-foreground tabular-nums">{fmtHistoryDate(h.at)}</span>
+                                    {h.revert && <span className="rounded bg-amber-500/15 border border-amber-500/25 px-1 text-[9px] font-bold uppercase text-amber-600 dark:text-amber-400">Revert</span>}
+                                  </div>
+                                  <div className="text-[10px] font-medium mt-0.5">{h.from} <span className="text-muted-foreground">→</span> {h.to}</div>
+                                  {h.note && <div className="text-[10px] text-muted-foreground italic mt-0.5 break-words">&ldquo;{h.note}&rdquo;</div>}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground/40 text-xs">—</span>
+                          )}
                         </td>
                         {/* Actions: Save (editing) / Edit (locked) */}
                         <td className="px-3 py-3">
@@ -330,6 +391,37 @@ export default function DesignTrackerPage() {
           </div>
         )}
       </div>
+
+      {/* Mandatory note when reverting a stage */}
+      <Dialog open={!!revertPrompt} onOpenChange={(o) => { if (!o) { setRevertPrompt(null); setRevertNote(""); } }}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0"><AlertTriangle className="h-5 w-5" /></div>
+              <div>
+                <DialogTitle className="text-base font-bold">Reason for going back?</DialogTitle>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Moving <span className="font-semibold">{revertPrompt?.design.name || "this design"}</span> back from <span className="font-semibold">{revertPrompt?.from}</span> to <span className="font-semibold">{revertPrompt?.to}</span>. A note is required and saved to the history.
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
+          <textarea
+            value={revertNote}
+            onChange={(e) => setRevertNote(e.target.value)}
+            rows={3}
+            autoFocus
+            placeholder="Why is this design going back a stage?"
+            className="w-full rounded-xl border border-border/40 bg-muted/30 px-3 py-2 text-sm resize-y focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          />
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="ghost" className="rounded-xl" onClick={() => { setRevertPrompt(null); setRevertNote(""); }}>Cancel</Button>
+            <Button className="rounded-xl gap-1.5 bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold disabled:opacity-50" onClick={confirmRevert} disabled={!revertNote.trim()}>
+              <Save className="h-4 w-4" /> Save &amp; revert
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirm */}
       <Dialog open={!!toDelete} onOpenChange={(o) => !o && setToDelete(null)}>

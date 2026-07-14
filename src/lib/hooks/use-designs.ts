@@ -14,13 +14,23 @@ export interface Design {
   addedToNewDesignBrochure: string;
   addedToThemedBrochure: string;
   stage: string;
+  stageHistory: StageHistoryEntry[];
   completed: boolean;
   riverAcknowledged: boolean;
   createdAt: string | null;
   updatedAt: string | null;
 }
 
-export type NewDesign = Partial<Omit<Design, "id" | "createdAt" | "updatedAt">>;
+export interface StageHistoryEntry {
+  from: string;
+  to: string;
+  note: string;
+  revert: boolean;
+  at: string | null;
+}
+
+/** `stageNote` is a write-only field: the reason recorded when reverting a stage. */
+export type NewDesign = Partial<Omit<Design, "id" | "createdAt" | "updatedAt">> & { stageNote?: string };
 
 export function useDesigns() {
   const [designs, setDesigns] = useState<Design[]>([]);
