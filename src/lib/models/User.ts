@@ -1,13 +1,13 @@
 import mongoose, { Schema, type Model } from "mongoose";
 
-export type UserRole = "admin" | "manager";
+export type UserRole = "admin" | "manager" | "viewer";
 
 const UserSchema = new Schema(
   {
     username: { type: String, required: true, unique: true },
     email: { type: String, required: true, unique: true },
     passwordHash: { type: String, required: true },
-    role: { type: String, enum: ["admin", "manager"], default: "manager" },
+    role: { type: String, enum: ["admin", "manager", "viewer"], default: "manager" },
     /** Hashed 6-digit reset token + expiry for the master-email password flow. */
     resetTokenHash: { type: String, default: null },
     resetTokenExp: { type: Date, default: null },

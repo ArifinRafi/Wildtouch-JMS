@@ -39,6 +39,14 @@ interface AppUser {
 
 const inputCls = "rounded-xl bg-muted/30 border-border/40";
 
+/** Badge colours per role. */
+const roleBadgeCls = (role: string) =>
+  role === "admin"
+    ? "border-primary/30 bg-primary/10 text-primary"
+    : role === "viewer"
+      ? "border-slate-500/30 bg-slate-500/10 text-slate-600 dark:text-slate-300"
+      : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400";
+
 export default function SettingsPage() {
   const session = useRole();
   const [me, setMe] = useState<{ username: string; email: string; role: string } | null>(null);
@@ -90,7 +98,7 @@ export default function SettingsPage() {
       if (!res.ok) throw new Error(data.error || "Could not create user");
       setUsers((prev) => [...prev, data]);
       setForm({ username: "", email: "", password: "", role: "manager" });
-      setUserMsg({ kind: "ok", text: `${data.role === "admin" ? "Admin" : "Manager"} "${data.username}" created.` });
+      setUserMsg({ kind: "ok", text: `${data.role.charAt(0).toUpperCase() + data.role.slice(1)} "${data.username}" created.` });
     } catch (e) {
       setUserMsg({ kind: "err", text: e instanceof Error ? e.message : "Could not create user" });
     } finally {
@@ -199,17 +207,21 @@ export default function SettingsPage() {
             <p className="text-sm font-semibold capitalize">{username}</p>
             <p className="text-xs text-muted-foreground">{email}</p>
           </div>
-          <Badge variant="outline" className={cn("ml-auto text-[11px] font-bold uppercase",
-            isAdmin ? "border-primary/30 bg-primary/10 text-primary" : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400")}>
+          <Badge variant="outline" className={cn("ml-auto text-[11px] font-bold uppercase", roleBadgeCls(role))}>
             <ShieldCheck className="h-3 w-3 mr-1" /> {role}
           </Badge>
         </div>
-        {!isAdmin && (
+        {role === "viewer" ? (
+          <p className="mt-4 text-[11px] text-muted-foreground rounded-xl border border-border/40 bg-muted/20 px-4 py-3">
+            View-only access: you can browse all data across the app. Creating, editing or deleting anything is
+            restricted to Admin or Manager — please contact your Admin.
+          </p>
+        ) : !isAdmin ? (
           <p className="mt-4 text-[11px] text-muted-foreground rounded-xl border border-border/40 bg-muted/20 px-4 py-3">
             Manager access: you can create orders, shifts, planograms and products, and manage whiteboard tasks.
             Deleting records and managing users requires an admin.
           </p>
-        )}
+        ) : null}
       </motion.div>
 
       {/* Change password — admin only (token to master email) */}
@@ -259,7 +271,7 @@ export default function SettingsPage() {
           {msgBox(userMsg)}
 
           {/* Create user */}
-          <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-end rounded-xl border border-dashed border-border/40 bg-muted/10 p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-6 gap-3 items-end rounded-xl border border-dashed border-border/40 bg-muted/10 p-4">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Username</Label>
               <Input className={inputCls} value={form.username} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} />
@@ -272,12 +284,12 @@ export default function SettingsPage() {
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Password</Label>
               <Input type="password" className={inputCls} value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} placeholder="min 8 chars" />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Role</Label>
               <div className="flex rounded-xl border border-border/40 overflow-hidden">
-                {["manager", "admin"].map((r) => (
+                {["viewer", "manager", "admin"].map((r) => (
                   <button key={r} onClick={() => setForm((f) => ({ ...f, role: r }))}
-                    className={cn("flex-1 px-3 py-2 text-xs font-semibold capitalize transition-colors",
+                    className={cn("flex-1 whitespace-nowrap px-2 py-2 text-xs font-semibold capitalize transition-colors",
                       form.role === r ? "bg-primary text-white" : "bg-muted/30 text-muted-foreground hover:text-foreground")}>
                     {r}
                   </button>
@@ -311,8 +323,7 @@ export default function SettingsPage() {
                       <td className="px-4 py-2.5 text-sm font-medium capitalize">{u.username}</td>
                       <td className="px-4 py-2.5 text-xs text-muted-foreground">{u.email}</td>
                       <td className="px-4 py-2.5">
-                        <Badge variant="outline" className={cn("text-[10px] font-bold uppercase",
-                          u.role === "admin" ? "border-primary/30 bg-primary/10 text-primary" : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400")}>
+                        <Badge variant="outline" className={cn("text-[10px] font-bold uppercase", roleBadgeCls(u.role))}>
                           {u.role}
                         </Badge>
                       </td>
