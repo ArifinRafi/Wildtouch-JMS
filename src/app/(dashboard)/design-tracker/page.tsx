@@ -254,7 +254,7 @@ export default function DesignTrackerPage() {
             <table className="w-full min-w-[1320px] border-collapse">
               <thead>
                 <tr className="border-b border-border/30 bg-muted/20">
-                  {["Design", "Client", "Category", "Notes", "Code Sheet", "New Brochure", "Themed Brochure", "Stage", "History", ""].map((h, i) => (
+                  {["Design", "Client", "Category", "Notes", "Code Sheet", "New Brochure", "Ordered", "Stage", "History", ""].map((h, i) => (
                     <th key={i} className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                   ))}
                 </tr>
