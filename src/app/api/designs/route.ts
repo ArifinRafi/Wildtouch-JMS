@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Design, serializeDesign, DESIGN_STRING_FIELDS } from "@/lib/models/Design";
+import { Design, serializeDesign, DESIGN_STRING_FIELDS, DESIGN_STAGES, DESIGN_FINAL_STAGE } from "@/lib/models/Design";
 import { logActivity } from "@/lib/activity";
 
 export async function GET(request: NextRequest) {
@@ -16,7 +16,10 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const data: Record<string, unknown> = {};
   for (const k of DESIGN_STRING_FIELDS) data[k] = String(body[k] ?? "").trim();
-  if (body.completed !== undefined) data.completed = Boolean(body.completed);
+  // Stage drives completion: the final stage marks the design finished → River.
+  const stage = DESIGN_STAGES.includes(body.stage) ? body.stage : "New Design Request";
+  data.stage = stage;
+  data.completed = stage === DESIGN_FINAL_STAGE;
   const created = await Design.create(data);
   await logActivity({
     action: "added",

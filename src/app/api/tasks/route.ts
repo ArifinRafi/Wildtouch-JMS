@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
     date: String(body.date ?? "").trim(),
     employeeName: String(body.employeeName ?? "").trim(),
     taskName: String(body.taskName ?? "").trim(),
+    note: String(body.note ?? "").trim(),
     status,
     priority,
   });

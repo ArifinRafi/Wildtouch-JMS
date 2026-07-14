@@ -19,6 +19,7 @@ export async function PATCH(
   if (body.date !== undefined) patch.date = String(body.date).trim();
   if (body.employeeName !== undefined) patch.employeeName = String(body.employeeName).trim();
   if (body.taskName !== undefined) patch.taskName = String(body.taskName).trim();
+  if (body.note !== undefined) patch.note = String(body.note);
   if (body.status !== undefined && TASK_STATUS.includes(body.status)) patch.status = body.status;
   if (body.priority !== undefined && TASK_PRIORITY.includes(body.priority)) patch.priority = body.priority;
 

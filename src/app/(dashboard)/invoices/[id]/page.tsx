@@ -6,6 +6,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowLeft, Printer, Loader2, AlertTriangle, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { thumbUrl } from "@/lib/cloudinary";
 
 interface InvoiceLine { code: string; description: string; qty: number; unitPrice: number; lineTotal: number }
 interface Invoice {
@@ -141,14 +142,17 @@ table.items td.q,table.items td.p,table.items td.t{text-align:right;white-space:
  * Printable planogram summary — same look as the invoice (brand header, client
  * addresses) but with the planogram product list only; no pricing anywhere.
  */
-function buildPlanogramHtml(inv: Invoice, planogramName: string): string {
+function buildPlanogramHtml(inv: Invoice, planogramName: string, imageOf: (l: InvoiceLine) => string): string {
   const c = inv.client || {};
   const totalUnits = inv.lineItems.reduce((s, l) => s + l.qty, 0);
   const rows = inv.lineItems
-    .map(
-      (l, i) =>
-        `<tr><td class="rn">${i + 1}</td><td><div class="desc">${esc(l.description || "—")}</div>${l.code ? `<div class="code">${esc(l.code)}</div>` : ""}</td><td class="q">${l.qty}</td></tr>`,
-    )
+    .map((l, i) => {
+      const img = imageOf(l);
+      const imgCell = img
+        ? `<img class="pimg" src="${esc(img)}" alt=""/>`
+        : `<div class="pimg placeholder"></div>`;
+      return `<tr><td class="rn">${i + 1}</td><td class="ic">${imgCell}</td><td><div class="desc">${esc(l.description || "—")}</div>${l.code ? `<div class="code">${esc(l.code)}</div>` : ""}</td><td class="q">${l.qty}</td></tr>`;
+    })
     .join("");
   const tel = (n?: string) => (n ? `<div class="lines">Tel. ${esc(n)}</div>` : "");
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Planogram ${esc(planogramName || inv.orderNumber || "")}</title>
@@ -179,6 +183,9 @@ table.items th.q{text-align:right}
 table.items tbody td{padding:10px 4px;border-bottom:1px solid #eee;vertical-align:top}
 table.items td.q{text-align:right;white-space:nowrap;font-weight:700}
 table.items td.rn{width:30px;color:#64748b;font-weight:700}
+table.items td.ic{width:56px}
+.pimg{width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;display:block}
+.pimg.placeholder{background:#f1f5f9}
 .desc{font-weight:700}
 .code{color:#555;font-size:11px;margin-top:2px}
 .totalrow{display:flex;justify-content:space-between;margin-top:12px;padding-top:10px;border-top:2px solid #334155;font-weight:800;font-size:14px}
@@ -207,8 +214,8 @@ table.items td.rn{width:30px;color:#64748b;font-weight:700}
 <hr/>
 <div class="plano"><span class="nm">${esc(planogramName || "—")}</span><span class="units">${totalUnits} units</span></div>
 <table class="items">
-  <thead><tr><th></th><th>Product</th><th class="q">Qty</th></tr></thead>
-  <tbody>${rows || `<tr><td class="rn">—</td><td>No products</td><td class="q">0</td></tr>`}</tbody>
+  <thead><tr><th></th><th>Image</th><th>Product</th><th class="q">Qty</th></tr></thead>
+  <tbody>${rows || `<tr><td class="rn">—</td><td class="ic"></td><td>No products</td><td class="q">0</td></tr>`}</tbody>
 </table>
 <div class="totalrow"><span>Total units</span><span>${totalUnits}</span></div>
 <div class="reg">
@@ -218,6 +225,7 @@ table.items td.rn{width:30px;color:#64748b;font-weight:700}
   <div>Email: sales@wildtouch.co.uk | Website: www.wildtouch.co.uk</div>
 </div>
 </div>
+<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},250);});</script>
 </body></html>`;
 }
 
@@ -225,6 +233,7 @@ export default function InvoiceViewPage() {
   const { id } = useParams<{ id: string }>();
   const [inv, setInv] = useState<Invoice | null>(null);
   const [planogramName, setPlanogramName] = useState("");
+  const [productImages, setProductImages] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -249,8 +258,31 @@ export default function InvoiceViewPage() {
       } catch { if (on) setNotFound(true); }
       finally { if (on) setLoading(false); }
     })();
+    // Product images for the planogram PDF, keyed by lowercased code and name.
+    (async () => {
+      try {
+        const pr = await fetch("/api/products");
+        if (!pr.ok) return;
+        const products: { name?: string; code?: string; image?: string | null }[] = await pr.json();
+        const map: Record<string, string> = {};
+        for (const p of products) {
+          if (!p.image) continue;
+          if (p.code) map[`code:${p.code.toLowerCase()}`] = p.image;
+          if (p.name) map[`name:${p.name.toLowerCase()}`] = p.image;
+        }
+        if (on) setProductImages(map);
+      } catch { /* images are best-effort */ }
+    })();
     return () => { on = false; };
   }, [id]);
+
+  // Resolve a line item's product image: match by code first, then by name.
+  const imageOf = (l: InvoiceLine): string => {
+    const byCode = l.code ? productImages[`code:${l.code.toLowerCase()}`] : "";
+    const byName = l.description ? productImages[`name:${l.description.toLowerCase()}`] : "";
+    const url = byCode || byName || "";
+    return url ? thumbUrl(url, 96) : "";
+  };
 
   const printInvoice = () => {
     if (!inv) return;
@@ -266,10 +298,10 @@ export default function InvoiceViewPage() {
     if (!inv) return;
     const win = window.open("", "_blank", "width=900,height=800");
     if (!win) return;
-    win.document.write(buildPlanogramHtml(inv, planogramName));
+    // The generated HTML self-prints on load (after its product images finish loading).
+    win.document.write(buildPlanogramHtml(inv, planogramName, imageOf));
     win.document.close();
     win.focus();
-    setTimeout(() => win.print(), 350);
   };
 
   if (loading) return <div className="flex items-center justify-center gap-2 py-24 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /><span className="text-sm">Loading invoice…</span></div>;

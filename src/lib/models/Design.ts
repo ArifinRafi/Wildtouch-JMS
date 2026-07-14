@@ -1,9 +1,19 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 
+/** Design pipeline stages. The final stage means the design is finished and flows to River. */
+export const DESIGN_STAGES = [
+  "New Design Request",
+  "Research",
+  "Feedback",
+  "New Design Template",
+] as const;
+/** Reaching this stage marks the design finished → available in River. */
+export const DESIGN_FINAL_STAGE = "New Design Template";
+
 /**
  * A new component design being tracked (Design Tracker "Live New Designs").
- * Format/checklist columns hold a dropdown value; completing a design makes it
- * an orderable component in the River section.
+ * Format/checklist columns hold a dropdown value; moving a design to the final
+ * stage ("New Design Template") makes it an orderable component in River.
  */
 const DesignSchema = new Schema(
   {
@@ -19,6 +29,9 @@ const DesignSchema = new Schema(
     addedToCodeSheet: { type: String, default: "" },
     addedToNewDesignBrochure: { type: String, default: "" },
     addedToThemedBrochure: { type: String, default: "" },
+    /** Pipeline stage; the final stage keeps `completed` in sync (see the API). */
+    stage: { type: String, default: "New Design Request" },
+    /** True when the design is at the final stage — kept in sync with `stage`. Drives River. */
     completed: { type: Boolean, default: false },
     /** Set once the completed design has been ordered or dismissed in River. */
     riverAcknowledged: { type: Boolean, default: false },
@@ -39,6 +52,9 @@ export const DESIGN_STRING_FIELDS = [
 
 export function serializeDesign(doc: Record<string, unknown> & { _id: unknown }) {
   const g = (k: string) => (doc[k] == null ? "" : String(doc[k]));
+  const completed = Boolean(doc.completed);
+  // Old rows have no `stage` — derive it from `completed` so they display sensibly.
+  const stage = g("stage") || (completed ? DESIGN_FINAL_STAGE : "New Design Request");
   return {
     id: String(doc._id),
     name: g("name"),
@@ -50,7 +66,8 @@ export function serializeDesign(doc: Record<string, unknown> & { _id: unknown })
     addedToCodeSheet: g("addedToCodeSheet"),
     addedToNewDesignBrochure: g("addedToNewDesignBrochure"),
     addedToThemedBrochure: g("addedToThemedBrochure"),
-    completed: Boolean(doc.completed),
+    stage,
+    completed,
     riverAcknowledged: Boolean(doc.riverAcknowledged),
     createdAt: (doc.createdAt as Date) ?? null,
     updatedAt: (doc.updatedAt as Date) ?? null,

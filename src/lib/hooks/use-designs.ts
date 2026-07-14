@@ -13,6 +13,7 @@ export interface Design {
   addedToCodeSheet: string;
   addedToNewDesignBrochure: string;
   addedToThemedBrochure: string;
+  stage: string;
   completed: boolean;
   riverAcknowledged: boolean;
   createdAt: string | null;

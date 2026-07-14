@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ListChecks,
@@ -39,6 +39,7 @@ export default function TaskManagerPage() {
   const [date, setDate] = useState(today());
   const [empName, setEmpName] = useState("");
   const [taskName, setTaskName] = useState("");
+  const [note, setNote] = useState("");
   const [status, setStatus] = useState<TaskStatus>("pending");
   const [priority, setPriority] = useState<TaskPriority>("medium");
   const [adding, setAdding] = useState(false);
@@ -73,14 +74,15 @@ export default function TaskManagerPage() {
     if (!empName.trim()) { setError("Enter an employee name."); return; }
     setError(""); setAdding(true);
     try {
-      await addTask({ date, employeeName: empName.trim(), taskName: taskName.trim(), status, priority });
-      setTaskName(""); setEmpName(""); setStatus("pending"); setPriority("medium");
+      await addTask({ date, employeeName: empName.trim(), taskName: taskName.trim(), note: note.trim(), status, priority });
+      setTaskName(""); setEmpName(""); setNote(""); setStatus("pending"); setPriority("medium");
     } catch { setError("Could not add the task."); }
     finally { setAdding(false); }
-  }, [date, empName, taskName, status, priority, addTask]);
+  }, [date, empName, taskName, note, status, priority, addTask]);
 
   const toggleStatus = (t: Task) => updateTask(t.id, { status: t.status === "complete" ? "pending" : "complete" }).catch(() => {});
   const setTaskPriority = (t: Task, p: TaskPriority) => updateTask(t.id, { priority: p }).catch(() => {});
+  const saveNote = (t: Task, v: string) => { if (v !== (t.note ?? "")) updateTask(t.id, { note: v }).catch(() => {}); };
 
   return (
     <div className="space-y-6 pb-12">
@@ -117,7 +119,7 @@ export default function TaskManagerPage() {
         className="rounded-2xl border border-border/40 bg-card/70 glass p-4">
         <div className="flex items-center gap-2 mb-3"><Plus className="h-4 w-4 text-primary" /><h3 className="text-sm font-semibold">New task for {new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</h3></div>
         {error && <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-1.5 border border-destructive/20 mb-3">{error}</p>}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
           <div className="space-y-1.5">
             <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Employee</Label>
             <EmployeeCombo value={empName} options={employeeOptions} onChange={setEmpName} />
@@ -125,6 +127,10 @@ export default function TaskManagerPage() {
           <div className="space-y-1.5">
             <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Task name</Label>
             <Input value={taskName} onChange={(e) => setTaskName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} placeholder="e.g. Pack Dudley Zoo order" className="rounded-xl bg-muted/30 border-border/40" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Note</Label>
+            <Input value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} placeholder="Optional note…" className="rounded-xl bg-muted/30 border-border/40" />
           </div>
           <div className="space-y-1.5">
             <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Status</Label>
@@ -162,7 +168,7 @@ export default function TaskManagerPage() {
             <table className="w-full min-w-[700px] border-collapse">
               <thead>
                 <tr className="border-b border-border/30 bg-muted/20">
-                  {["", "Employee", "Task", "Priority", "Status", ""].map((h, i) => (
+                  {["", "Employee", "Task", "Note", "Priority", "Status", ""].map((h, i) => (
                     <th key={i} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                   ))}
                 </tr>
@@ -179,6 +185,9 @@ export default function TaskManagerPage() {
                       </td>
                       <td className="px-4 py-3 text-sm font-medium">{t.employeeName || "—"}</td>
                       <td className={cn("px-4 py-3 text-sm", t.status === "complete" && "line-through text-muted-foreground")}>{t.taskName || "—"}</td>
+                      <td className="px-4 py-3 min-w-[180px]">
+                        <NoteCell task={t} onSave={saveNote} />
+                      </td>
                       <td className="px-4 py-3">
                         <select value={t.priority} onChange={(e) => setTaskPriority(t, e.target.value as TaskPriority)}
                           className={cn("h-7 rounded-lg border px-2 text-[11px] font-semibold capitalize focus-visible:outline-none", PRIORITY_STYLE[t.priority])}>
@@ -202,6 +211,23 @@ export default function TaskManagerPage() {
         )}
       </div>
     </div>
+  );
+}
+
+/** Inline note editor: seeds from the task, saves on blur (or Enter) if changed. */
+function NoteCell({ task, onSave }: { task: Task; onSave: (t: Task, v: string) => void }) {
+  const [value, setValue] = useState(task.note ?? "");
+  // Keep in sync if the task's note changes elsewhere.
+  useEffect(() => { setValue(task.note ?? ""); }, [task.note]);
+  return (
+    <input
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => onSave(task, value)}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+      placeholder="Add a note…"
+      className="h-8 w-full rounded-lg border border-border/40 bg-muted/30 px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+    />
   );
 }
 

@@ -63,11 +63,10 @@ export default function RiverPage() {
   const [ndOpen, setNdOpen] = useState(false);
 
   // Completed designs from the Design Tracker — orderable components.
-  useEffect(() => {
-    let on = true;
-    fetch("/api/designs?completed=true").then((r) => (r.ok ? r.json() : [])).then((d) => on && setDesigns(d)).catch(() => {});
-    return () => { on = false; };
+  const refreshDesigns = useCallback(() => {
+    fetch("/api/designs?completed=true").then((r) => (r.ok ? r.json() : [])).then((d) => setDesigns(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
+  useEffect(() => { refreshDesigns(); }, [refreshDesigns]);
 
   // "New Design" notifications: completed designs not yet ordered or dismissed.
   const newDesigns = useMemo(() => designs.filter((d) => !d.riverAcknowledged), [designs]);
@@ -103,16 +102,18 @@ export default function RiverPage() {
   }, [orders]);
 
   const df = (k: keyof RiverOrder, v: string | number) => setDraft((p) => ({ ...p, [k]: v }));
-  const startEdit = (o: RiverOrder) => { setDraft({ ...o }); setEditingId(o.id); };
+  // Refresh completed designs when entering edit mode so the component field is current.
+  const startEdit = (o: RiverOrder) => { refreshDesigns(); setDraft({ ...o }); setEditingId(o.id); };
 
   const addRow = useCallback(async () => {
     try {
+      refreshDesigns();
       const created = await addOrder({});
       setNewRowId(created.id);
       setDraft({ ...created });
       setEditingId(created.id);
     } catch { /* ignore */ }
-  }, [addOrder]);
+  }, [addOrder, refreshDesigns]);
 
   // "Order it" from a New Design notification → pre-filled River row in edit mode.
   const orderDesign = useCallback(async (d: { id: string; name: string }) => {
@@ -205,7 +206,7 @@ export default function RiverPage() {
         ))}
 
         {/* New Design notification */}
-        <DropdownMenu open={ndOpen} onOpenChange={setNdOpen}>
+        <DropdownMenu open={ndOpen} onOpenChange={(o) => { setNdOpen(o); if (o) refreshDesigns(); }}>
           <DropdownMenuTrigger className="relative flex items-center gap-2 rounded-xl border border-pink-500/20 bg-pink-500/10 px-4 py-2 text-sm font-semibold text-pink-600 dark:text-pink-400 hover:bg-pink-500/15 transition-colors focus-visible:outline-none">
             <Sparkles className="h-4 w-4" /> New Design
             {newDesigns.length > 0 && (
@@ -449,12 +450,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 /** Dated progress log: pick a date, write a note, add multiple entries. */
 function NotesLogEditor({ value, onChange }: { value: { date: string; note: string }[]; onChange: (next: { date: string; note: string }[]) => void }) {
-  const [date, setDate] = useState("");
+  // Local YYYY-MM-DD for the <input type="date"> default.
+  const todayStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const [date, setDate] = useState(todayStr());
   const [note, setNote] = useState("");
   const add = () => {
-    if (!date && !note.trim()) return;
-    onChange([...(value ?? []), { date, note: note.trim() }]);
-    setDate(""); setNote("");
+    if (!note.trim()) return;
+    // Default to today's date when the user hasn't picked another.
+    onChange([...(value ?? []), { date: date || todayStr(), note: note.trim() }]);
+    setDate(todayStr()); setNote("");
   };
   const remove = (idx: number) => onChange(value.filter((_, i) => i !== idx));
   const noteField = "h-7 rounded-md border border-border/40 bg-muted/30 px-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";

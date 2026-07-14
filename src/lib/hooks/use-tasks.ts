@@ -10,6 +10,7 @@ export interface Task {
   date: string;
   employeeName: string;
   taskName: string;
+  note: string;
   status: TaskStatus;
   priority: TaskPriority;
   createdAt: string | null;

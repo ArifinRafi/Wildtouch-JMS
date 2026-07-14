@@ -10,8 +10,6 @@ import {
   Trash2,
   Pencil,
   ImagePlus,
-  CheckCircle2,
-  RotateCcw,
   AlertTriangle,
   Save,
   X,
@@ -32,6 +30,17 @@ import { useRole } from "@/lib/hooks/use-role";
 import { useDesigns, type Design, type NewDesign } from "@/lib/hooks/use-designs";
 
 const cellInput = "h-8 w-full rounded-lg border border-border/40 bg-muted/30 px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";
+
+// Design pipeline stages (kept in sync with the server-side list). The final
+// stage means the design is finished → available in River.
+const DESIGN_STAGES = ["New Design Request", "Research", "Feedback", "New Design Template"] as const;
+const DESIGN_FINAL_STAGE = "New Design Template";
+const STAGE_STYLE: Record<string, string> = {
+  "New Design Request": "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400",
+  "Research": "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400",
+  "Feedback": "bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400",
+  "New Design Template": "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
+};
 
 export default function DesignTrackerPage() {
   const { designs, loading, addDesign, updateDesign, deleteDesign } = useDesigns();
@@ -121,6 +130,7 @@ export default function DesignTrackerPage() {
       notes: (draft.notes ?? "").trim(), addedToCodeSheet: (draft.addedToCodeSheet ?? "").trim(),
       addedToNewDesignBrochure: (draft.addedToNewDesignBrochure ?? "").trim(),
       addedToThemedBrochure: (draft.addedToThemedBrochure ?? "").trim(),
+      stage: draft.stage ?? "New Design Request",
     };
     try {
       await ensureCategory(payload.categoryType ?? "");
@@ -137,7 +147,8 @@ export default function DesignTrackerPage() {
     catch { /* ignore */ } finally { setUploadingId(null); }
   }, []);
 
-  const setCompleted = (d: Design, v: boolean) => { updateDesign(d.id, { completed: v }).catch(() => {}); };
+  // Change a design's pipeline stage; the server keeps `completed` (River) in sync.
+  const setStage = (d: Design, stage: string) => { updateDesign(d.id, { stage }).catch(() => {}); };
 
   const confirmDelete = useCallback(async () => {
     if (!toDelete) return;
@@ -200,7 +211,7 @@ export default function DesignTrackerPage() {
             <table className="w-full min-w-[1120px] border-collapse">
               <thead>
                 <tr className="border-b border-border/30 bg-muted/20">
-                  {["Design", "Client", "Category", "Notes", "Code Sheet", "New Brochure", "Themed Brochure", "Completed", ""].map((h, i) => (
+                  {["Design", "Client", "Category", "Notes", "Code Sheet", "New Brochure", "Themed Brochure", "Stage", ""].map((h, i) => (
                     <th key={i} className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                   ))}
                 </tr>
@@ -260,20 +271,39 @@ export default function DesignTrackerPage() {
                         {/* Text columns */}
                         {(["addedToCodeSheet", "addedToNewDesignBrochure", "addedToThemedBrochure"] as (keyof Design)[]).map((k) => (
                           <td key={k} className="px-3 py-3 max-w-[160px]">
-                            {editing ? <input value={String(v[k] ?? "")} onChange={(e) => df(k, e.target.value)} className={cellInput} />
-                              : <p className="text-xs text-muted-foreground line-clamp-2">{String(d[k] || "—")}</p>}
+                            {editing ? (
+                              k === "addedToThemedBrochure" ? (
+                                <select value={String(v[k] ?? "")} onChange={(e) => df(k, e.target.value)} className={cellInput}>
+                                  <option value="">—</option>
+                                  <option value="Yes">Yes</option>
+                                  <option value="No">No</option>
+                                </select>
+                              ) : (
+                                <input value={String(v[k] ?? "")} onChange={(e) => df(k, e.target.value)} className={cellInput} />
+                              )
+                            ) : (
+                              <p className="text-xs text-muted-foreground line-clamp-2">{String(d[k] || "—")}</p>
+                            )}
                           </td>
                         ))}
-                        {/* Completed */}
-                        <td className="px-3 py-3">
-                          {d.completed ? (
-                            <div className="flex items-center gap-1.5">
-                              <Badge variant="outline" className="text-[10px] font-semibold bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400">Completed</Badge>
-                              <button onClick={() => setCompleted(d, false)} title="Reopen" className="text-muted-foreground/60 hover:text-foreground"><RotateCcw className="h-3.5 w-3.5" /></button>
-                            </div>
-                          ) : (
-                            <Button size="sm" onClick={() => setCompleted(d, true)} className="h-8 gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-600/90 text-white text-xs font-semibold"><CheckCircle2 className="h-3.5 w-3.5" /> Complete</Button>
-                          )}
+                        {/* Stage — while editing it lives in the draft (saved with the name);
+                            on a locked row it applies immediately. */}
+                        <td className="px-3 py-3 min-w-[190px]">
+                          {(() => {
+                            const cur = v.stage || (v.completed ? DESIGN_FINAL_STAGE : "New Design Request");
+                            return (
+                              <select
+                                value={cur}
+                                onChange={(e) => (editing ? df("stage", e.target.value) : setStage(d, e.target.value))}
+                                title={cur === DESIGN_FINAL_STAGE ? "Finished — available in River" : "Set the design stage"}
+                                className={cn("h-8 w-full rounded-lg border px-2 text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30", STAGE_STYLE[cur] ?? STAGE_STYLE["New Design Request"])}
+                              >
+                                {DESIGN_STAGES.map((s) => (
+                                  <option key={s} value={s}>{s === DESIGN_FINAL_STAGE ? `${s} → River` : s}</option>
+                                ))}
+                              </select>
+                            );
+                          })()}
                         </td>
                         {/* Actions: Save (editing) / Edit (locked) */}
                         <td className="px-3 py-3">
