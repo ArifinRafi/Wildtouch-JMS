@@ -1,10 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
-import { ProductGroup, serializeProductGroup } from "@/lib/models/ProductGroup";
+import { ProductGroup, serializeProductGroup, DEFAULT_PRODUCT_GROUPS } from "@/lib/models/ProductGroup";
 import { logActivity } from "@/lib/activity";
 
 export async function GET() {
   await connectDB();
+  // Seed the standard groups once, when none exist yet (fresh database).
+  const count = await ProductGroup.estimatedDocumentCount();
+  if (count === 0) {
+    await ProductGroup.insertMany(DEFAULT_PRODUCT_GROUPS.map((name) => ({ name })));
+  }
   const docs = await ProductGroup.find({}).sort({ name: 1 }).lean();
   return NextResponse.json(docs.map(serializeProductGroup));
 }

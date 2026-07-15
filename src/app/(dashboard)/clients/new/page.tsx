@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -35,12 +35,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { CategoryPriceEditor } from "@/components/clients/category-price-editor";
 import { useAppStore } from "@/lib/store/app-store";
-import type { Client, ClientPricing, AdditionalContact } from "@/lib/store/app-store";
-import {
-  PRODUCT_PRICE_FIELDS,
-  type AccountStatus,
-} from "@/lib/mock-data/clients";
+import type { Client, AdditionalContact } from "@/lib/store/app-store";
+import { type AccountStatus } from "@/lib/mock-data/clients";
 
 // ─── Form types ─────────────────────────────────────────────────────────────
 interface ClientForm {
@@ -74,7 +72,7 @@ interface ClientForm {
   cardsUsed: string;
   boxesUsed: string;
   specialInformation: string;
-  pricing: Record<string, string>;
+  categoryPrices: Record<string, string>;
   additionalContacts: AdditionalContact[];
   brandCardImage: string;
   barcodeImage: string;
@@ -112,7 +110,7 @@ function emptyForm(): ClientForm {
     cardsUsed: "",
     boxesUsed: "",
     specialInformation: "",
-    pricing: {},
+    categoryPrices: {},
     additionalContacts: [],
     brandCardImage: "",
     barcodeImage: "",
@@ -135,8 +133,15 @@ export default function NewClientPage() {
     },
     [],
   );
-  const setPricingField = useCallback((key: string, value: string) => {
-    setForm((prev) => ({ ...prev, pricing: { ...prev.pricing, [key]: value } }));
+
+  // Product categories (managed group list) — each gets a per-client price used for invoicing.
+  const [productCategories, setProductCategories] = useState<string[]>([]);
+  useEffect(() => {
+    let on = true;
+    fetch("/api/product-groups").then((r) => (r.ok ? r.json() : [])).then((d: { name: string }[]) => {
+      if (on) setProductCategories(d.map((g) => g.name));
+    }).catch(() => {});
+    return () => { on = false; };
   }, []);
 
   // ── Additional contacts (repeatable list) ──
@@ -196,15 +201,15 @@ export default function NewClientPage() {
     }
     setFormError("");
 
-    const pricingObj: ClientPricing = {};
-    for (const f of PRODUCT_PRICE_FIELDS) {
-      const raw = form.pricing[f.key];
+    // Per-category prices (product group → £) — drives category-level invoicing.
+    const categoryPricesObj: Record<string, number> = {};
+    for (const [cat, raw] of Object.entries(form.categoryPrices)) {
       if (raw && raw.trim()) {
         const n = parseFloat(raw);
-        if (!isNaN(n)) (pricingObj as Record<string, number>)[f.key] = n;
+        if (!isNaN(n) && n >= 0) categoryPricesObj[cat] = n;
       }
     }
-    const hasPricing = Object.keys(pricingObj).length > 0;
+    const hasCategoryPrices = Object.keys(categoryPricesObj).length > 0;
 
     const cleanedAdditionalContacts = form.additionalContacts
       .map((c) => ({
@@ -257,7 +262,7 @@ export default function NewClientPage() {
       ...(form.upsellInfo.trim() && { upsellInfo: form.upsellInfo.trim() }),
       ...(form.cardsUsed.trim() && { cardsUsed: form.cardsUsed.trim() }),
       ...(form.boxesUsed.trim() && { boxesUsed: form.boxesUsed.trim() }),
-      ...(hasPricing && { pricing: pricingObj }),
+      ...(hasCategoryPrices && { categoryPrices: categoryPricesObj }),
       ...(form.specialInformation.trim() && {
         specialInformation: form.specialInformation.trim(),
       }),
@@ -581,28 +586,19 @@ export default function NewClientPage() {
         </div>
       </Section>
 
-      {/* ── Section 5: Pricing ── */}
+      {/* ── Section 5: Pricing (per product group, drives invoices) ── */}
       <Section title="Pricing" icon={<PoundSterling className="h-4 w-4" />}>
-        <div className="grid grid-cols-2 gap-4">
-          {PRODUCT_PRICE_FIELDS.map((f) => (
-            <div key={f.key} className="space-y-1.5">
-              <Label>{f.label}</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                  <PoundSterling className="h-3.5 w-3.5" />
-                </span>
-                <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  className={cn("pl-8", inputCls)}
-                  value={form.pricing[f.key] ?? ""}
-                  onChange={(e) => setPricingField(f.key, e.target.value)}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+        <p className="text-[11px] text-muted-foreground -mt-1 mb-3">
+          Price per <span className="font-semibold">product group</span> for this client. Groups are created on the
+          Products page (Add Group) — here you search an existing group, set this client&rsquo;s price, and add it.
+          Invoices bill each planogram product at its group&rsquo;s price.
+        </p>
+        <CategoryPriceEditor
+          categories={productCategories}
+          value={form.categoryPrices}
+          onChange={(next) => setForm((prev) => ({ ...prev, categoryPrices: next }))}
+          inputCls={inputCls}
+        />
       </Section>
 
       {/* ── Section 6: Brand Card + Barcode ── */}

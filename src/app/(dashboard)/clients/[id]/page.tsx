@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -39,14 +39,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { CategoryPriceEditor } from "@/components/clients/category-price-editor";
 import { uploadImage } from "@/lib/cloudinary";
 import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { useAppStore } from "@/lib/store/app-store";
-import type { Client, ClientPricing, AdditionalContact } from "@/lib/store/app-store";
-import {
-  PRODUCT_PRICE_FIELDS,
-  type AccountStatus,
-} from "@/lib/mock-data/clients";
+import type { Client, AdditionalContact } from "@/lib/store/app-store";
+import { type AccountStatus } from "@/lib/mock-data/clients";
 
 // ─── Status config ──────────────────────────────────────────────────────────
 const statusConfig: Record<AccountStatus, { label: string; className: string }> = {
@@ -100,18 +98,17 @@ interface ClientForm {
   cardsUsed: string;
   boxesUsed: string;
   specialInformation: string;
-  pricing: Record<string, string>;
+  categoryPrices: Record<string, string>;
   additionalContacts: AdditionalContact[];
   brandCardImage: string;
   barcodeImage: string;
 }
 
 function clientToForm(c: Client): ClientForm {
-  const pricing: Record<string, string> = {};
-  if (c.pricing) {
-    for (const f of PRODUCT_PRICE_FIELDS) {
-      const v = c.pricing[f.key];
-      if (v !== undefined) pricing[f.key] = String(v);
+  const categoryPrices: Record<string, string> = {};
+  if (c.categoryPrices) {
+    for (const [k, v] of Object.entries(c.categoryPrices)) {
+      if (v != null) categoryPrices[k] = String(v);
     }
   }
   return {
@@ -145,7 +142,7 @@ function clientToForm(c: Client): ClientForm {
     cardsUsed: c.cardsUsed ?? "",
     boxesUsed: c.boxesUsed ?? "",
     specialInformation: c.specialInformation ?? "",
-    pricing,
+    categoryPrices,
     additionalContacts: c.additionalContacts ?? [],
     brandCardImage: c.brandCardImage ?? "",
     barcodeImage: c.barcodeImage ?? "",
@@ -189,8 +186,14 @@ export default function ClientDetailPage() {
     },
     [],
   );
-  const setPricingField = useCallback((key: string, value: string) => {
-    setForm((prev) => ({ ...prev, pricing: { ...prev.pricing, [key]: value } }));
+  // Product categories (managed group list) — each gets a per-client price used for invoicing.
+  const [productCategories, setProductCategories] = useState<string[]>([]);
+  useEffect(() => {
+    let on = true;
+    fetch("/api/product-groups").then((r) => (r.ok ? r.json() : [])).then((d: { name: string }[]) => {
+      if (on) setProductCategories(d.map((g) => g.name));
+    }).catch(() => {});
+    return () => { on = false; };
   }, []);
 
   // ── Additional contacts (repeatable list) ──
@@ -250,15 +253,14 @@ export default function ClientDetailPage() {
     }
     setFormError("");
 
-    const pricingObj: ClientPricing = {};
-    for (const f of PRODUCT_PRICE_FIELDS) {
-      const raw = form.pricing[f.key];
+    // Per-category prices (product group → £) — drives category-level invoicing.
+    const categoryPricesObj: Record<string, number> = {};
+    for (const [cat, raw] of Object.entries(form.categoryPrices)) {
       if (raw && raw.trim()) {
         const n = parseFloat(raw);
-        if (!isNaN(n)) (pricingObj as Record<string, number>)[f.key] = n;
+        if (!isNaN(n) && n >= 0) categoryPricesObj[cat] = n;
       }
     }
-    const hasPricing = Object.keys(pricingObj).length > 0;
 
     const cleanedAdditionalContacts = form.additionalContacts
       .map((c) => ({
@@ -302,7 +304,7 @@ export default function ClientDetailPage() {
       upsellInfo: form.upsellInfo.trim() || undefined,
       cardsUsed: form.cardsUsed.trim() || undefined,
       boxesUsed: form.boxesUsed.trim() || undefined,
-      pricing: hasPricing ? pricingObj : undefined,
+      categoryPrices: categoryPricesObj,
       specialInformation: form.specialInformation.trim() || undefined,
     };
 
@@ -351,9 +353,6 @@ export default function ClientDetailPage() {
   // VIEW MODE
   // ═══════════════════════════════════════════════════════════════════════════
   if (mode === "view") {
-    const hasPricing =
-      client.pricing && PRODUCT_PRICE_FIELDS.some((f) => client.pricing?.[f.key] != null);
-
     return (
       <motion.div
         initial={{ opacity: 0, y: 12 }}
@@ -459,21 +458,18 @@ export default function ClientDetailPage() {
             </ViewSection>
           )}
 
-          {/* Pricing */}
-          {hasPricing && (
+          {/* Pricing — per product group (drives invoices) */}
+          {client.categoryPrices && Object.keys(client.categoryPrices).length > 0 && (
             <ViewSection title="Pricing" icon={<PoundSterling className="h-4 w-4" />}>
               <div className="grid grid-cols-3 gap-x-6 gap-y-2">
-                {PRODUCT_PRICE_FIELDS.map((f) => {
-                  const v = client.pricing?.[f.key];
-                  if (v == null) return null;
-                  return (
-                    <div key={f.key} className="flex justify-between text-sm py-1">
-                      <span className="text-muted-foreground">{f.label}</span>
-                      <span className="font-medium">{"\u00A3"}{v.toFixed(2)}</span>
-                    </div>
-                  );
-                })}
+                {Object.entries(client.categoryPrices).map(([cat, v]) => (
+                  <div key={cat} className="flex justify-between text-sm py-1">
+                    <span className="text-muted-foreground">{cat}</span>
+                    <span className="font-medium">{"£"}{Number(v).toFixed(2)}</span>
+                  </div>
+                ))}
               </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">Invoices bill each planogram product at its group&rsquo;s price above.</p>
             </ViewSection>
           )}
 
@@ -957,26 +953,17 @@ export default function ClientDetailPage() {
 
       {/* ── Section 5: Pricing ── */}
       <EditSection title="Pricing" icon={<PoundSterling className="h-4 w-4" />}>
-        <div className="grid grid-cols-2 gap-4">
-          {PRODUCT_PRICE_FIELDS.map((f) => (
-            <div key={f.key} className="space-y-1.5">
-              <Label>{f.label}</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                  <PoundSterling className="h-3.5 w-3.5" />
-                </span>
-                <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  className={cn("pl-8", inputCls)}
-                  value={form.pricing[f.key] ?? ""}
-                  onChange={(e) => setPricingField(f.key, e.target.value)}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+        <p className="text-[11px] text-muted-foreground -mt-1 mb-3">
+          Price per <span className="font-semibold">product group</span> for this client. Groups are created on the
+          Products page (Add Group) — here you search an existing group, set this client&rsquo;s price, and add it.
+          Invoices bill each planogram product at its group&rsquo;s price.
+        </p>
+        <CategoryPriceEditor
+          categories={productCategories}
+          value={form.categoryPrices}
+          onChange={(next) => setForm((prev) => ({ ...prev, categoryPrices: next }))}
+          inputCls={inputCls}
+        />
       </EditSection>
 
       {/* ── Section 7: Media (Brand Card + Barcode) ── */}

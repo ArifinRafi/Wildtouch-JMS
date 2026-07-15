@@ -16,6 +16,7 @@ import {
   X,
   Loader2,
   ImagePlus,
+  Layers,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useProducts, type CatalogProduct } from "@/lib/hooks/use-products";
 import { useInventory } from "@/lib/store/inventory-store";
+import { useRole } from "@/lib/hooks/use-role";
 import { uploadImage, thumbUrl } from "@/lib/cloudinary";
 
 const PAGE_SIZE = 50;
@@ -44,6 +46,7 @@ interface ProductGroupOption { id: string; name: string }
 export default function ProductsPage() {
   const { products, loading, createProduct, updateProduct, deleteProduct } = useProducts();
   const { items: inventory } = useInventory();
+  const { isAdmin } = useRole();
 
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -88,10 +91,36 @@ export default function ProductsPage() {
     } catch { /* non-blocking */ }
   }, [groups]);
 
-  const deleteGroup = useCallback((id: string) => {
+  // Deleting a group is destructive (removes the category everywhere), so it's
+  // confirmed via a modal — a stray click on the ✕ can't wipe a category.
+  const [groupToDelete, setGroupToDelete] = useState<ProductGroupOption | null>(null);
+  const requestDeleteGroup = useCallback((id: string) => {
+    setGroups((prev) => {
+      const g = prev.find((x) => x.id === id);
+      if (g) setGroupToDelete(g);
+      return prev;
+    });
+  }, []);
+  const confirmDeleteGroup = useCallback(() => {
+    if (!groupToDelete) return;
+    const id = groupToDelete.id;
     setGroups((prev) => prev.filter((g) => g.id !== id));
     fetch(`/api/product-groups/${id}`, { method: "DELETE" }).catch(() => {});
-  }, []);
+    setGroupToDelete(null);
+  }, [groupToDelete]);
+
+  // "Add Group" dialog — create groups without creating a product, so they can
+  // be priced in client settings right away.
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [addingGroup, setAddingGroup] = useState(false);
+  const addGroup = useCallback(async () => {
+    const n = newGroupName.trim();
+    if (!n || addingGroup) return;
+    setAddingGroup(true);
+    try { await ensureGroup(n); setNewGroupName(""); }
+    finally { setAddingGroup(false); }
+  }, [newGroupName, addingGroup, ensureGroup]);
 
   const handleImageUpload = async (file: File | undefined) => {
     if (!file) return;
@@ -189,11 +218,19 @@ export default function ProductsPage() {
             Products built from inventory components · <span className="font-semibold text-primary">{products.length.toLocaleString()}</span>
           </p>
         </div>
-        <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-          <Button onClick={openAdd} className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold shadow-lg shadow-primary/20">
-            <Plus className="h-4 w-4" /> Create a Product
-          </Button>
-        </motion.div>
+        <div className="flex items-center gap-2">
+          <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+            <Button variant="outline" onClick={() => setGroupDialogOpen(true)}
+              className="gap-2 rounded-xl border-indigo-500/30 bg-indigo-500/5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/15 font-semibold">
+              <Layers className="h-4 w-4" /> Add Group
+            </Button>
+          </motion.div>
+          <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+            <Button onClick={openAdd} className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold shadow-lg shadow-primary/20">
+              <Plus className="h-4 w-4" /> Create a Product
+            </Button>
+          </motion.div>
+        </div>
       </motion.div>
 
       {/* Stat chips */}
@@ -272,7 +309,7 @@ export default function ProductsPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1.5">
                             <button onClick={() => openEdit(p)} title="Edit" className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
-                            <button onClick={() => setToDelete(p)} title="Delete" className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/20 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                            {isAdmin && <button onClick={() => setToDelete(p)} title="Delete" className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/20 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>}
                           </div>
                         </td>
                       </motion.tr>
@@ -325,7 +362,7 @@ export default function ProductsPage() {
                 value={form.group}
                 groups={groups}
                 onChange={(v) => setForm((f) => ({ ...f, group: v }))}
-                onDeleteGroup={deleteGroup}
+                onDeleteGroup={requestDeleteGroup}
               />
               <p className="text-[11px] text-muted-foreground">Type a new group name to create it, or pick a saved one. New groups are saved when you create the product.</p>
             </div>
@@ -413,6 +450,73 @@ export default function ProductsPage() {
             <Button onClick={submit} disabled={!form.name.trim()} className="rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold">
               {editing ? "Save Changes" : "Create Product"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add / manage groups */}
+      <Dialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <Layers className="h-4 w-4 text-primary" /> Product Groups
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground -mt-1">
+            Create a group without adding a product — it becomes searchable in client settings (Category Pricing) right away.
+          </p>
+          <div className="flex items-center gap-2">
+            <Input
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") addGroup(); }}
+              placeholder="e.g. Keyrings"
+              className="rounded-xl bg-muted/30 border-border/40"
+              autoFocus
+            />
+            <Button onClick={addGroup} disabled={addingGroup || !newGroupName.trim()}
+              className="gap-1.5 rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold disabled:opacity-50">
+              {addingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add
+            </Button>
+          </div>
+          <div className="rounded-xl border border-border/40 bg-muted/10 max-h-56 overflow-y-auto">
+            {groups.length === 0 ? (
+              <p className="px-3 py-4 text-center text-xs text-muted-foreground">No groups yet.</p>
+            ) : (
+              groups.map((g) => (
+                <div key={g.id} className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/15 last:border-b-0">
+                  <span className="text-sm truncate">{g.name}</span>
+                  <button onClick={() => setGroupToDelete(g)} title={`Delete ${g.name}`}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete-group confirm — guards against an accidental ✕ */}
+      <Dialog open={!!groupToDelete} onOpenChange={(o) => !o && setGroupToDelete(null)}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10 text-destructive shrink-0"><AlertTriangle className="h-5 w-5" /></div>
+              <div>
+                <DialogTitle className="text-base font-bold">Delete this category?</DialogTitle>
+                <p className="text-xs text-muted-foreground mt-1">This removes the group everywhere and can&rsquo;t be undone.</p>
+              </div>
+            </div>
+          </DialogHeader>
+          {groupToDelete && (
+            <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3">
+              <p className="text-sm font-semibold">{groupToDelete.name}</p>
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="ghost" className="rounded-xl" onClick={() => setGroupToDelete(null)}>No</Button>
+            <Button variant="destructive" className="rounded-xl gap-1.5" onClick={confirmDeleteGroup}><Trash2 className="h-4 w-4" /> Yes, delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

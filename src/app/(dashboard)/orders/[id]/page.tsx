@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { Order } from "@/lib/store/orders-store";
+import { useRole } from "@/lib/hooks/use-role";
 import { PartialInvoiceDialog } from "@/components/orders/partial-invoice-dialog";
 
 interface OrderInvoiceRef {
@@ -65,6 +66,7 @@ const esc = (v: string) => v.replace(/[&<>]/g, (m) => (m === "&" ? "&amp;" : m =
 export default function OrderViewPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { isAdmin } = useRole();
   const [order, setOrder] = useState<Order | null>(null);
   const [invoices, setInvoices] = useState<OrderInvoiceRef[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,10 +193,12 @@ ${order.notes ? `<div class="box"><h4>Notes</h4><div class="muted">${esc(order.n
                 <ClipboardList className="h-3.5 w-3.5 text-primary" /> Packing List
               </Button>
             </Link>
-            <button onClick={() => setConfirmDelete(true)} title="Delete order"
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors">
-              <Trash2 className="h-4 w-4" />
-            </button>
+            {isAdmin && (
+              <button onClick={() => setConfirmDelete(true)} title="Delete order"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors">
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
       </motion.div>

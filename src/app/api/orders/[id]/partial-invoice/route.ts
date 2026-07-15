@@ -3,6 +3,7 @@ import { isValidObjectId } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Order, serializeOrder } from "@/lib/models/Order";
 import { Invoice, nextInvoiceNumber, serializeInvoice } from "@/lib/models/Invoice";
+import { groupIntoCategoryLines } from "@/lib/invoicing";
 import { logActivity } from "@/lib/activity";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -58,13 +59,17 @@ export async function POST(
     orderId: order._id,
     orderNumber: order.orderNumber,
     client: order.client ?? {},
-    lineItems: (order.lineItems ?? []).map((l) => ({
-      code: l.code,
-      description: l.description,
-      qty: l.qtyOrdered,
-      unitPrice: l.unitPrice,
-      lineTotal: l.lineTotal,
-    })),
+    // Same category-level lines as the main invoice.
+    lineItems: groupIntoCategoryLines(
+      (order.lineItems ?? []).map((l) => ({
+        code: l.code ?? "",
+        description: l.description ?? "",
+        category: l.category ?? "",
+        qtyOrdered: l.qtyOrdered ?? 0,
+        unitPrice: l.unitPrice ?? 0,
+        lineTotal: l.lineTotal ?? 0,
+      })),
+    ),
     subtotal: order.subtotal ?? 0,
     shipping: order.shipping ?? 0,
     vatRate: order.vatRate ?? 0,

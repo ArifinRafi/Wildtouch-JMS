@@ -100,6 +100,8 @@ export interface Client {
   cardsUsed?: string;
   boxesUsed?: string;
   pricing?: ClientPricing;
+  /** Per-category unit prices (product group name → £ price) used for invoicing. */
+  categoryPrices?: Record<string, number>;
   specialInformation?: string;
 }
 

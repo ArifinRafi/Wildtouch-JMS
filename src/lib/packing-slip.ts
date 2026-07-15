@@ -13,7 +13,7 @@ function dateShort(iso: string | null) {
  * screen (iframe) and in the printed PDF. Screen shows a responsive sheet;
  * print renders a real A4 page with margins.
  */
-export function buildPackingSlipHtml(order: Order): string {
+export function buildPackingSlipHtml(order: Order, includePod: boolean = true): string {
   const c = order.client || {};
   const rows = order.lineItems
     .map((l) => {
@@ -24,6 +24,16 @@ export function buildPackingSlipHtml(order: Order): string {
     .join("");
   const billAddr = esc(c.invoiceAddress || "");
   const shipAddr = esc(c.deliveryAddress || c.invoiceAddress || "");
+  // Proof of Delivery box is optional.
+  const podHtml = includePod
+    ? `<div class="pod">
+  <div class="t">Proof of Delivery</div>
+  <div class="row"><span class="lbl">Date of Delivery:</span></div>
+  <div class="row"><span class="lbl">Print:</span></div>
+  <div class="row"><span class="lbl">Signature:</span></div>
+  <div class="row"><span class="lbl">Order From:</span> Wildtouch</div>
+</div>`
+    : "";
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Packing Slip ${esc(order.orderNumber)}</title>
 <style>@page{size:A4;margin:0}*{box-sizing:border-box;margin:0;padding:0}
 body{font-family:"Segoe UI",Arial,sans-serif;font-size:12px;color:#1f2937;line-height:1.45;background:#f1f5f9}
@@ -88,13 +98,7 @@ tbody td.q{text-align:right;white-space:nowrap;font-weight:600}
   <div>Contact Details: Sterling-K Ltd c/o Sterling-K House, 12 Well Street, Birmingham, B19 3BH | T: 0121 551 2699</div>
   <div>Email: sales@wildtouch.co.uk | Website: www.wildtouch.co.uk</div>
 </div>
-<div class="pod">
-  <div class="t">Proof of Delivery</div>
-  <div class="row"><span class="lbl">Date of Delivery:</span></div>
-  <div class="row"><span class="lbl">Print:</span></div>
-  <div class="row"><span class="lbl">Signature:</span></div>
-  <div class="row"><span class="lbl">Order From:</span> Wildtouch</div>
-</div>
+${podHtml}
 </div>
 </body></html>`;
 }

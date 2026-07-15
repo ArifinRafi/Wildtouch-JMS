@@ -142,10 +142,10 @@ table.items td.q,table.items td.p,table.items td.t{text-align:right;white-space:
  * Printable planogram summary — same look as the invoice (brand header, client
  * addresses) but with the planogram product list only; no pricing anywhere.
  */
-function buildPlanogramHtml(inv: Invoice, planogramName: string, imageOf: (l: InvoiceLine) => string): string {
+function buildPlanogramHtml(inv: Invoice, planogramName: string, lines: InvoiceLine[], imageOf: (l: InvoiceLine) => string): string {
   const c = inv.client || {};
-  const totalUnits = inv.lineItems.reduce((s, l) => s + l.qty, 0);
-  const rows = inv.lineItems
+  const totalUnits = lines.reduce((s, l) => s + l.qty, 0);
+  const rows = lines
     .map((l, i) => {
       const img = imageOf(l);
       const imgCell = img
@@ -233,6 +233,9 @@ export default function InvoiceViewPage() {
   const { id } = useParams<{ id: string }>();
   const [inv, setInv] = useState<Invoice | null>(null);
   const [planogramName, setPlanogramName] = useState("");
+  // Product-level lines from the linked ORDER — the invoice's own lines are
+  // category-level, so the planogram panel/PDF read products from the order.
+  const [orderLines, setOrderLines] = useState<InvoiceLine[]>([]);
   const [productImages, setProductImages] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -245,13 +248,24 @@ export default function InvoiceViewPage() {
         if (!res.ok) { if (on) setNotFound(true); return; }
         const data: Invoice = await res.json();
         if (on) setInv(data);
-        // Pull the planogram name from the linked order (for the side panel only).
+        // Pull the planogram name + product lines from the linked order
+        // (side panel + planogram PDF are product-level; the invoice is category-level).
         if (data.orderId) {
           try {
             const or = await fetch(`/api/orders/${data.orderId}`);
             if (or.ok) {
               const order = await or.json();
-              if (on) setPlanogramName(order?.planogram?.name ?? "");
+              if (on) {
+                setPlanogramName(order?.planogram?.name ?? "");
+                const lines = Array.isArray(order?.lineItems) ? order.lineItems : [];
+                setOrderLines(lines.map((l: { code?: string; description?: string; qtyOrdered?: number; unitPrice?: number; lineTotal?: number }) => ({
+                  code: l.code ?? "",
+                  description: l.description ?? "",
+                  qty: l.qtyOrdered ?? 0,
+                  unitPrice: l.unitPrice ?? 0,
+                  lineTotal: l.lineTotal ?? 0,
+                })));
+              }
             }
           } catch { /* side panel is best-effort */ }
         }
@@ -276,6 +290,10 @@ export default function InvoiceViewPage() {
     return () => { on = false; };
   }, [id]);
 
+  // Product lines for the planogram panel/PDF — prefer the order's product
+  // lines; fall back to the invoice lines for legacy invoices with no order.
+  const panelLines = orderLines.length ? orderLines : (inv?.lineItems ?? []);
+
   // Resolve a line item's product image: match by code first, then by name.
   const imageOf = (l: InvoiceLine): string => {
     const byCode = l.code ? productImages[`code:${l.code.toLowerCase()}`] : "";
@@ -299,7 +317,7 @@ export default function InvoiceViewPage() {
     const win = window.open("", "_blank", "width=900,height=800");
     if (!win) return;
     // The generated HTML self-prints on load (after its product images finish loading).
-    win.document.write(buildPlanogramHtml(inv, planogramName, imageOf));
+    win.document.write(buildPlanogramHtml(inv, planogramName, panelLines, imageOf));
     win.document.close();
     win.focus();
   };
@@ -313,7 +331,7 @@ export default function InvoiceViewPage() {
     </div>
   );
 
-  const totalUnits = inv.lineItems.reduce((s, l) => s + l.qty, 0);
+  const totalUnits = panelLines.reduce((s, l) => s + l.qty, 0);
 
   return (
     <div className="space-y-6 pb-12">
@@ -377,11 +395,11 @@ export default function InvoiceViewPage() {
 
           <div className="mt-4 border-t border-border/30 pt-3">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Products &amp; quantities</p>
-            {inv.lineItems.length === 0 ? (
+            {panelLines.length === 0 ? (
               <p className="text-xs text-muted-foreground/60">No products</p>
             ) : (
               <div className="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1">
-                {inv.lineItems.map((l, i) => (
+                {panelLines.map((l, i) => (
                   <div key={i} className="flex items-start justify-between gap-2 text-sm">
                     <span className="min-w-0 truncate">{l.description || "—"}</span>
                     <span className="shrink-0 font-bold tabular-nums text-primary">×{l.qty}</span>

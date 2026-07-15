@@ -6,6 +6,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowLeft, Printer, Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { buildPackingSlipHtml } from "@/lib/packing-slip";
 import type { Order } from "@/lib/store/orders-store";
 
@@ -14,6 +15,11 @@ export default function PackingListViewPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  // Proof of Delivery is optional — default to including it (?pod=0 excludes it).
+  const [includePod, setIncludePod] = useState(true);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("pod") === "0") setIncludePod(false);
+  }, []);
 
   useEffect(() => {
     let on = true;
@@ -33,7 +39,7 @@ export default function PackingListViewPage() {
     if (!order) return;
     const win = window.open("", "_blank", "width=900,height=800");
     if (!win) return;
-    win.document.write(buildPackingSlipHtml(order));
+    win.document.write(buildPackingSlipHtml(order, includePod));
     win.document.close();
     win.focus();
     setTimeout(() => win.print(), 350);
@@ -56,9 +62,24 @@ export default function PackingListViewPage() {
         </Link>
         <div className="flex items-center justify-between flex-wrap gap-4">
           <h1 className="text-3xl font-bold tracking-tight">Packing Slip · <span className="font-mono">{order.orderNumber}</span></h1>
-          <Button onClick={printSlip} className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold">
-            <Printer className="h-4 w-4" /> Download PDF
-          </Button>
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Proof of Delivery: with / without */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-muted-foreground">Proof of Delivery</span>
+              <div className="flex rounded-xl border border-border/40 overflow-hidden">
+                {([["with", true], ["without", false]] as const).map(([label, v]) => (
+                  <button key={label} onClick={() => setIncludePod(v)}
+                    className={cn("px-3 py-1.5 text-xs font-semibold capitalize transition-colors",
+                      includePod === v ? "bg-primary text-white" : "bg-muted/30 text-muted-foreground hover:text-foreground")}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Button onClick={printSlip} className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold">
+              <Printer className="h-4 w-4" /> Download PDF
+            </Button>
+          </div>
         </div>
       </motion.div>
 
@@ -67,7 +88,7 @@ export default function PackingListViewPage() {
         className="rounded-2xl border border-border/40 bg-white overflow-hidden shadow-sm">
         <iframe
           title="Packing Slip"
-          srcDoc={buildPackingSlipHtml(order)}
+          srcDoc={buildPackingSlipHtml(order, includePod)}
           className="w-full block"
           style={{ border: 0, height: 900 }}
           onLoad={(e) => {

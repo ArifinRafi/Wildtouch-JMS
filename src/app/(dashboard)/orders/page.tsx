@@ -3,6 +3,7 @@
 import { useMemo, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ShoppingCart,
   Plus,
@@ -31,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useOrders, type Order } from "@/lib/store/orders-store";
+import { useRole } from "@/lib/hooks/use-role";
 import { PartialInvoiceDialog } from "@/components/orders/partial-invoice-dialog";
 
 const STATUS_STYLE: Record<string, string> = {
@@ -69,9 +71,19 @@ function dateKey(iso: string | null): string {
 
 export default function OrdersPage() {
   const { orders, loading, deleteOrder, refresh } = useOrders();
+  const { isAdmin } = useRole();
+  const router = useRouter();
   const [toDelete, setToDelete] = useState<Order | null>(null);
   const [partialFor, setPartialFor] = useState<Order | null>(null);
+  const [packingFor, setPackingFor] = useState<Order | null>(null);
   const [dateFilter, setDateFilter] = useState("");
+
+  const openPackingList = (withPod: boolean) => {
+    if (!packingFor) return;
+    const o = packingFor;
+    setPackingFor(null);
+    router.push(`/orders/${o.id}/packing-list${withPod ? "" : "?pod=0"}`);
+  };
 
   const filtered = useMemo(
     () => (dateFilter ? orders.filter((o) => dateKey(o.createdAt) === dateFilter) : orders),
@@ -302,16 +314,16 @@ export default function OrdersPage() {
                         </Badge>
                       </td>
                       <td className="px-5 py-3 align-middle text-center">
-                        <Link href={`/orders/${o.id}/packing-list`} title="Open packing slip — view & download PDF">
-                          <motion.span
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 px-2.5 transition-colors"
-                          >
-                            <ClipboardList className="h-3.5 w-3.5" />
-                            <span className="text-[11px] font-semibold">Packing List</span>
-                          </motion.span>
-                        </Link>
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => setPackingFor(o)}
+                          title="Generate packing slip"
+                          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 px-2.5 transition-colors"
+                        >
+                          <ClipboardList className="h-3.5 w-3.5" />
+                          <span className="text-[11px] font-semibold">Packing List</span>
+                        </motion.button>
                       </td>
                       <td className="px-5 py-3 align-middle">
                         <div className="flex items-center justify-end gap-1.5">
@@ -334,15 +346,17 @@ export default function OrdersPage() {
                             <Receipt className="h-3.5 w-3.5" />
                             <span className="text-[11px] font-semibold">Partial</span>
                           </motion.button>
-                          <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => setToDelete(o)}
-                            title="Delete order"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/20 transition-colors"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </motion.button>
+                          {isAdmin && (
+                            <motion.button
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => setToDelete(o)}
+                              title="Delete order"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/20 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </motion.button>
+                          )}
                         </div>
                       </td>
                     </motion.tr>
@@ -385,6 +399,33 @@ export default function OrdersPage() {
           </div>
         </motion.div>
       )}
+
+      {/* Packing list — with / without Proof of Delivery */}
+      <Dialog open={!!packingFor} onOpenChange={(o) => !o && setPackingFor(null)}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 shrink-0">
+                <ClipboardList className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold">Generate Packing List</DialogTitle>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {packingFor?.orderNumber} · include the Proof of Delivery section?
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" className="rounded-xl gap-1.5 border-border/40" onClick={() => openPackingList(false)}>
+              Without Proof of Delivery
+            </Button>
+            <Button className="rounded-xl gap-1.5 bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold" onClick={() => openPackingList(true)}>
+              <ClipboardList className="h-4 w-4" /> With Proof of Delivery
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Partial invoice */}
       <PartialInvoiceDialog
