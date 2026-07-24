@@ -29,6 +29,8 @@ import {
 import { cn } from "@/lib/utils";
 import type { Order } from "@/lib/store/orders-store";
 import { useRole } from "@/lib/hooks/use-role";
+import { thumbUrl } from "@/lib/cloudinary";
+import { resolvePlanogramForPdf, buildPlanogramSidesHtml, type PdfPlanogram } from "@/lib/planogram-pdf";
 import { PartialInvoiceDialog } from "@/components/orders/partial-invoice-dialog";
 
 interface OrderInvoiceRef {
@@ -69,6 +71,9 @@ export default function OrderViewPage() {
   const { isAdmin } = useRole();
   const [order, setOrder] = useState<Order | null>(null);
   const [invoices, setInvoices] = useState<OrderInvoiceRef[]>([]);
+  // Full planogram structure + product images for the per-side planogram PDF.
+  const [sidesPg, setSidesPg] = useState<PdfPlanogram | null>(null);
+  const [productImages, setProductImages] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -82,6 +87,20 @@ export default function OrderViewPage() {
         if (!res.ok) { if (on) setNotFound(true); return; }
         const data: Order = await res.json();
         if (on) setOrder(data);
+        // Resolve the planogram's side structure for the per-side PDF.
+        resolvePlanogramForPdf(data?.planogram?.id)
+          .then((pg) => { if (on) setSidesPg(pg); })
+          .catch(() => {});
+        // Product images for the planogram PDF (keyed by lowercased name).
+        fetch("/api/products")
+          .then((r) => (r.ok ? r.json() : []))
+          .then((products: { name?: string; image?: string | null }[]) => {
+            if (!on || !Array.isArray(products)) return;
+            const map: Record<string, string> = {};
+            for (const p of products) if (p.image && p.name) map[`name:${p.name.toLowerCase()}`] = p.image;
+            setProductImages(map);
+          })
+          .catch(() => {});
         // Best-effort: collect this order's invoices (main + partials).
         try {
           const inv = await fetch("/api/invoices");
@@ -100,6 +119,27 @@ export default function OrderViewPage() {
     await fetch(`/api/orders/${id}`, { method: "DELETE" });
     router.push("/orders");
   }, [id, router]);
+
+  // Planogram PDF: one page per side + a totals page (self-prints on load).
+  const printPlanogramSides = () => {
+    if (!order || !sidesPg) return;
+    const win = window.open("", "_blank", "width=900,height=800");
+    if (!win) return;
+    win.document.write(buildPlanogramSidesHtml(
+      {
+        orderNumber: order.orderNumber,
+        dateStr: fmtDate(order.createdAt),
+        clientName: order.client?.name ?? "",
+      },
+      sidesPg,
+      (product) => {
+        const url = productImages[`name:${product.toLowerCase()}`] ?? "";
+        return url ? thumbUrl(url, 96) : "";
+      },
+    ));
+    win.document.close();
+    win.focus();
+  };
 
   const printOrder = () => {
     if (!order) return;
@@ -373,9 +413,20 @@ ${order.notes ? `<div class="box"><h4>Notes</h4><div class="muted">${esc(order.n
       {/* Planogram summary — same panel as on the invoice */}
       <motion.aside initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4, delay: 0.1 }}
         className="rounded-2xl border border-border/40 bg-card/70 glass p-5">
-        <div className="flex items-center gap-2 mb-1">
-          <LayoutGrid className="h-4 w-4 text-primary" />
-          <h3 className="text-sm font-semibold">Planogram</h3>
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <div className="flex items-center gap-2">
+            <LayoutGrid className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold">Planogram</h3>
+          </div>
+          {sidesPg && (
+            <button
+              onClick={printPlanogramSides}
+              title="Download planogram PDF — one page per side + totals"
+              className="flex h-7 items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/10 px-2 text-[11px] font-semibold text-primary hover:bg-primary/20 transition-colors"
+            >
+              <Printer className="h-3 w-3" /> PDF
+            </button>
+          )}
         </div>
         <p className="text-sm font-semibold">{order.planogram?.name || "—"}</p>
         <p className="text-[11px] text-muted-foreground mt-0.5">

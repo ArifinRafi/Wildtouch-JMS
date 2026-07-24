@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -77,6 +77,10 @@ export default function OrdersPage() {
   const [partialFor, setPartialFor] = useState<Order | null>(null);
   const [packingFor, setPackingFor] = useState<Order | null>(null);
   const [dateFilter, setDateFilter] = useState("");
+
+  // Re-fetch whenever the Orders page is opened so newly confirmed orders
+  // appear without a manual browser refresh.
+  useEffect(() => { refresh().catch(() => {}); }, [refresh]);
 
   const openPackingList = (withPod: boolean) => {
     if (!packingFor) return;

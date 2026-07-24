@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { ArrowLeft, Printer, Loader2, AlertTriangle, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { thumbUrl } from "@/lib/cloudinary";
+import { resolvePlanogramForPdf, buildPlanogramSidesHtml, type PdfPlanogram } from "@/lib/planogram-pdf";
 
 interface InvoiceLine { code: string; description: string; qty: number; unitPrice: number; lineTotal: number }
 interface Invoice {
@@ -236,6 +237,8 @@ export default function InvoiceViewPage() {
   // Product-level lines from the linked ORDER — the invoice's own lines are
   // category-level, so the planogram panel/PDF read products from the order.
   const [orderLines, setOrderLines] = useState<InvoiceLine[]>([]);
+  // Full side-by-side planogram structure (custom or built-in) for the paginated PDF.
+  const [sidesPg, setSidesPg] = useState<PdfPlanogram | null>(null);
   const [productImages, setProductImages] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -257,6 +260,10 @@ export default function InvoiceViewPage() {
               const order = await or.json();
               if (on) {
                 setPlanogramName(order?.planogram?.name ?? "");
+                // Resolve the full planogram (sides/rows/cells) for the per-side PDF.
+                resolvePlanogramForPdf(order?.planogram?.id)
+                  .then((pg) => { if (on) setSidesPg(pg); })
+                  .catch(() => {});
                 const lines = Array.isArray(order?.lineItems) ? order.lineItems : [];
                 setOrderLines(lines.map((l: { code?: string; description?: string; qtyOrdered?: number; unitPrice?: number; lineTotal?: number }) => ({
                   code: l.code ?? "",
@@ -316,8 +323,25 @@ export default function InvoiceViewPage() {
     if (!inv) return;
     const win = window.open("", "_blank", "width=900,height=800");
     if (!win) return;
+    // Preferred: one page per planogram side + a totals page. Falls back to the
+    // flat product list when the planogram structure can't be resolved.
+    const html = sidesPg
+      ? buildPlanogramSidesHtml(
+          {
+            orderNumber: inv.orderNumber,
+            invoiceNumber: inv.invoiceNumber,
+            dateStr: dateShort(inv.createdAt),
+            clientName: inv.client?.name ?? "",
+          },
+          sidesPg,
+          (product) => {
+            const url = productImages[`name:${product.toLowerCase()}`] ?? "";
+            return url ? thumbUrl(url, 96) : "";
+          },
+        )
+      : buildPlanogramHtml(inv, planogramName, panelLines, imageOf);
     // The generated HTML self-prints on load (after its product images finish loading).
-    win.document.write(buildPlanogramHtml(inv, planogramName, panelLines, imageOf));
+    win.document.write(html);
     win.document.close();
     win.focus();
   };

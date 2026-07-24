@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { StepNav } from "@/components/orders/step-nav";
 import { useOrderDraft } from "@/lib/store/order-draft";
+import { useOrders } from "@/lib/store/orders-store";
 import { useAppStore } from "@/lib/store/app-store";
 import { useProducts } from "@/lib/hooks/use-products";
 import { buildCategoryLookup, priceLinesByCategory, groupIntoCategoryLines } from "@/lib/invoicing";
@@ -20,6 +21,7 @@ import { buildCategoryLookup, priceLinesByCategory, groupIntoCategoryLines } fro
 export default function ReviewStepPage() {
   const router = useRouter();
   const { draft, reset } = useOrderDraft();
+  const { refresh: refreshOrders } = useOrders();
   const { clients } = useAppStore();
   const { products } = useProducts();
   const [error, setError] = useState("");
@@ -62,6 +64,9 @@ export default function ReviewStepPage() {
       if (!res.ok) throw new Error("confirm failed");
       const { invoice } = await res.json();
       reset();
+      // Pull the fresh order list into the shared store so the Orders page
+      // shows the new order immediately — no manual page refresh needed.
+      refreshOrders().catch(() => {});
       router.push(`/invoices/${invoice.id}`);
       return true;
     } catch {

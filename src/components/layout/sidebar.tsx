@@ -27,6 +27,7 @@ import {
   PenTool,
   ListChecks,
   History,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -49,6 +50,7 @@ type NavItem = {
 
 const navigation: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, section: "overview" },
+  { title: "User Manual", href: "/manual", icon: BookOpen, section: "overview" },
   { title: "Clients", href: "/clients", icon: Users, section: "core" },
   { title: "Inventory", href: "/inventory", icon: Boxes, section: "core" },
   { title: "Products", href: "/products", icon: Package, section: "core" },
