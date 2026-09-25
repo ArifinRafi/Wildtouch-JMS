@@ -10,6 +10,7 @@ const ComponentPartSchema = new Schema(
 
 const ComponentSchema = new Schema(
   {
+    productLine: { type: String, default: "" },
     description: { type: String, default: "" },
     code: { type: String, default: "" },
     components: { type: [ComponentPartSchema], default: [] },
@@ -38,6 +39,7 @@ export const Component: Model<ComponentDoc> =
 /** Shape a lean/document into the CatalogItem shape the UI expects. */
 export function serializeComponent(doc: {
   _id: unknown;
+  productLine?: string;
   description?: string;
   code?: string;
   components?: { label?: string; code?: string }[];
@@ -45,6 +47,7 @@ export function serializeComponent(doc: {
 }) {
   return {
     id: String(doc._id),
+    productLine: doc.productLine ?? "",
     description: doc.description ?? "",
     code: doc.code ?? "",
     qtyAvailable: doc.qtyAvailable ?? 0,

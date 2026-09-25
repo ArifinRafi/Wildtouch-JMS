@@ -10,19 +10,25 @@ import {
   X,
   Save,
   Tag,
+  ShieldAlert,
+  Loader2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useInventory } from "@/lib/store/inventory-store";
+import { useInventoryAccess } from "@/lib/hooks/use-inventory-access";
+import { formatProductTitle } from "@/lib/product-title";
 
 interface AddForm {
+  productLine: string;
   description: string;
   code: string;
   qtyAvailable: string;
 }
 
 const emptyForm = (): AddForm => ({
+  productLine: "",
   description: "",
   code: "",
   qtyAvailable: "0",
@@ -31,6 +37,7 @@ const emptyForm = (): AddForm => ({
 export default function AddComponentPage() {
   const router = useRouter();
   const { addItem } = useInventory();
+  const { canWriteInventory, loading: accessLoading } = useInventoryAccess();
 
   const [form, setForm] = useState<AddForm>(emptyForm());
   const [error, setError] = useState("");
@@ -44,8 +51,12 @@ export default function AddComponentPage() {
   const [saving, setSaving] = useState(false);
 
   const handleSave = useCallback(async () => {
+    if (!form.productLine.trim()) {
+      setError("Product line is required.");
+      return;
+    }
     if (!form.description.trim()) {
-      setError("Component name is required.");
+      setError("Product name is required.");
       return;
     }
     setError("");
@@ -54,6 +65,7 @@ export default function AddComponentPage() {
     setSaving(true);
     try {
       await addItem({
+        productLine: form.productLine.trim(),
         description: form.description.trim(),
         code: form.code.trim(),
         qtyAvailable: qty,
@@ -65,6 +77,34 @@ export default function AddComponentPage() {
       setSaving(false);
     }
   }, [form, addItem, router]);
+
+  if (accessLoading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-24 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span className="text-sm">Checking inventory access…</span>
+      </div>
+    );
+  }
+
+  if (!canWriteInventory) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
+          <ShieldAlert className="h-6 w-6" />
+        </div>
+        <h1 className="text-lg font-semibold">Inventory update access required</h1>
+        <p className="mt-1 max-w-md text-sm text-muted-foreground">
+          An admin must grant your account permission before you can add or modify inventory.
+        </p>
+        <Link href="/inventory/all-components" className="mt-5">
+          <Button variant="outline" className="gap-2 rounded-xl">
+            <ArrowLeft className="h-4 w-4" /> Back to Inventory
+          </Button>
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <motion.div
@@ -115,6 +155,18 @@ export default function AddComponentPage() {
         </div>
 
         <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Product Line *
+            </Label>
+            <Input
+              className={inputCls}
+              placeholder="e.g. Large Keyring"
+              value={form.productLine}
+              onChange={(e) => setField("productLine", e.target.value)}
+            />
+          </div>
+
           <div className="space-y-1.5 max-w-[280px]">
             <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Code
@@ -129,14 +181,17 @@ export default function AddComponentPage() {
 
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Component Name *
+              Product Name *
             </Label>
             <Input
               className={inputCls}
-              placeholder="e.g. Bag Charm Gold Bird"
+              placeholder="e.g. 10 Downing Street"
               value={form.description}
               onChange={(e) => setField("description", e.target.value)}
             />
+            <p className="text-[11px] text-muted-foreground">
+              Title preview: <span className="font-semibold text-foreground">{formatProductTitle(form.productLine, form.description) || "Product Line: Name"}</span>
+            </p>
           </div>
 
           <div className="space-y-1.5 max-w-[220px]">
@@ -160,7 +215,7 @@ export default function AddComponentPage() {
         <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
           <Button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || !form.productLine.trim() || !form.description.trim()}
             className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 hover:from-primary/90 hover:to-indigo-500/90 shadow-lg shadow-primary/20 text-white font-semibold disabled:opacity-60"
           >
             <Save className="h-4 w-4" />

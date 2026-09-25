@@ -40,6 +40,7 @@ import { cn } from "@/lib/utils";
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface WhiteboardOrder {
   id: string;
+  orderNumber?: string;
   date: string;            // YYYY-MM-DD
   priority: Priority;
   customerName: string;
@@ -81,8 +82,7 @@ const LOCATIONS = [
   "UPS", "DHL", "FED-EX", "Palletways",
   "Kiran", "Richard", "Zia", "OFC",
 ];
-const PRIORITY_FILTERS = ["All", "1 - Urgent", "2 - Moderate", "3 - Normal"] as const;
-type PriorityFilter = typeof PRIORITY_FILTERS[number];
+type PriorityFilter = "All" | Priority;
 
 // ─── Seed data ────────────────────────────────────────────────────────────────
 const now = new Date();
@@ -182,6 +182,7 @@ export default function DigitalWhiteboardPage() {
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((o) =>
+        (o.orderNumber ?? "").toLowerCase().includes(q) ||
         o.customerName.toLowerCase().includes(q) ||
         o.product.toLowerCase().includes(q) ||
         o.location.toLowerCase().includes(q) ||
@@ -614,7 +615,9 @@ export default function DigitalWhiteboardPage() {
                     {/* Customer */}
                     <td className="px-3 py-3 align-middle">
                       <p className="text-sm font-semibold whitespace-nowrap">{order.customerName}</p>
-                      <p className="text-[10px] text-muted-foreground">{order.id}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {order.orderNumber ? `${order.orderNumber} · ${order.id}` : order.id}
+                      </p>
                     </td>
 
                     {/* Order Type */}

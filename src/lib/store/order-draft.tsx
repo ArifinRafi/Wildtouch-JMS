@@ -11,10 +11,14 @@ import type {
   OrderLineItem,
   OrderComponentRequirement,
   OrderClientSnapshot,
+  OrderAgentSnapshot,
 } from "@/lib/store/orders-store";
+import type { OrderSource } from "@/lib/order-source";
 
 /** The order being assembled across the multi-page "new order" flow. */
 export interface OrderDraft {
+  isBackOrder: boolean;
+  backOrderDate: string;
   planogram: { id: string; name: string } | null;
   lineItems: OrderLineItem[];
   componentRequirements: OrderComponentRequirement[];
@@ -26,18 +30,28 @@ export interface OrderDraft {
   rowQty?: number[][][];
   stockChecked: boolean;
   client: OrderClientSnapshot | null;
+  agent: OrderAgentSnapshot | null;
+  orderSource: OrderSource | "";
+  poNumber: string;
+  referenceNumber: string;
   notes: string;
   /** VAT rate (percentage) entered by the user at order creation. */
   vatRate?: number;
 }
 
 export const emptyDraft = (): OrderDraft => ({
+  isBackOrder: false,
+  backOrderDate: "",
   planogram: null,
   lineItems: [],
   componentRequirements: [],
   slots: undefined,
   stockChecked: false,
   client: null,
+  agent: null,
+  orderSource: "",
+  poNumber: "",
+  referenceNumber: "",
   notes: "",
   vatRate: 20,
 });

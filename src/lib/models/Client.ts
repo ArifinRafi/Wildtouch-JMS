@@ -1,4 +1,22 @@
 import mongoose, { Schema, type Model } from "mongoose";
+import { normalizeAccountStatus } from "@/lib/client-status";
+
+const ClientIssueSchema = new Schema(
+  {
+    date: { type: String, default: "" },
+    type: { type: String, enum: ["complaint", "issue"], default: "complaint" },
+    note: { type: String, default: "" },
+  },
+  { _id: false },
+);
+
+const ClientNoteSchema = new Schema(
+  {
+    date: { type: String, default: "" },
+    note: { type: String, default: "" },
+  },
+  { _id: false },
+);
 
 /**
  * Client model. Uses a String _id so the human-friendly "CLT-001" codes are
@@ -12,12 +30,26 @@ const ClientSchema = new Schema(
     name: { type: String, required: true },
     address: { type: String, default: "" },
     city: { type: String, default: "" },
+    postcode: { type: String, default: "" },
+    region: { type: String, default: "" },
     contactNumber: { type: String, default: "" },
     email: { type: String, default: "" },
+    companyNumber: { type: String, default: "" },
+    agentId: { type: String, default: "" },
+    agentName: { type: String, default: "" },
+    primaryContactName: { type: String, default: "" },
+    primaryContactPosition: { type: String, default: "" },
+    furtherContactName: { type: String, default: "" },
+    furtherContactPosition: { type: String, default: "" },
+    furtherContactNumber: { type: String, default: "" },
     history: { type: String, default: "good" },
-    accountStatus: { type: String, default: "active" },
+    accountStatus: { type: String, default: "new_client" },
     lastOrder: { type: String, default: "" },
     totalOrders: { type: Number, default: 0 },
+    substituteDesignNotes: { type: String, default: "" },
+    complaintsIssues: { type: [ClientIssueSchema], default: [] },
+    clientNotes: { type: [ClientNoteSchema], default: [] },
+    pricingCurrency: { type: String, enum: ["GBP", "EUR"], default: "GBP" },
   },
   { strict: false, timestamps: true },
 );
@@ -40,12 +72,16 @@ export async function nextClientId(): Promise<string> {
 }
 
 /** Shape a client doc into the API/UI shape (id + all stored fields). */
-export function serializeClient(doc: Record<string, unknown>) {
+export function serializeClient(doc: Record<string, unknown>): { id: string; [key: string]: unknown } {
   const { _id, __v, createdAt, updatedAt, ...rest } = doc as Record<string, unknown> & {
     _id: unknown;
   };
   void __v;
   void createdAt;
   void updatedAt;
-  return { id: String(_id), ...rest };
+  return {
+    id: String(_id),
+    ...rest,
+    accountStatus: normalizeAccountStatus(rest.accountStatus),
+  };
 }

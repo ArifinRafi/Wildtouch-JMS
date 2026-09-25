@@ -17,11 +17,11 @@ import {
   Loader2,
   ImagePlus,
   Layers,
+  Hash,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -29,11 +29,11 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
 import { useProducts, type CatalogProduct } from "@/lib/hooks/use-products";
 import { useInventory } from "@/lib/store/inventory-store";
 import { useRole } from "@/lib/hooks/use-role";
 import { uploadImage, thumbUrl } from "@/lib/cloudinary";
+import { formatProductLine, formatProductTitle, productNameOnly } from "@/lib/product-title";
 
 const PAGE_SIZE = 50;
 
@@ -49,6 +49,7 @@ export default function ProductsPage() {
   const { isAdmin } = useRole();
 
   const [search, setSearch] = useState("");
+  const [codeSearch, setCodeSearch] = useState("");
   const [page, setPage] = useState(0);
 
   // Seed the search box from a ?q= param (used by the global header search).
@@ -138,13 +139,23 @@ export default function ProductsPage() {
 
   const dialogOpen = adding || !!editing;
 
+  const productCodeOptions = useMemo(
+    () => [...new Set(products.map((p) => p.code.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    [products],
+  );
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return products;
-    const q = search.toLowerCase();
-    return products.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q) || (p.group ?? "").toLowerCase().includes(q),
-    );
-  }, [products, search]);
+    const q = search.trim().toLowerCase();
+    const codeQuery = codeSearch.trim().toLowerCase();
+    return products.filter((p) => {
+      const matchesSearch = !q
+        || formatProductTitle(p.group, p.name).toLowerCase().includes(q)
+        || p.code.toLowerCase().includes(q)
+        || (p.group ?? "").toLowerCase().includes(q);
+      const matchesCode = !codeQuery || p.code.toLowerCase().includes(codeQuery);
+      return matchesSearch && matchesCode;
+    });
+  }, [products, search, codeSearch]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
@@ -167,7 +178,7 @@ export default function ProductsPage() {
     setEditing(p);
     setCompSearch("");
     setForm({
-      name: p.name,
+      name: productNameOnly(p.group, p.name),
       code: p.code,
       group: p.group ?? "",
       image: p.image ?? "",
@@ -191,7 +202,7 @@ export default function ProductsPage() {
       image: form.image.trim() || null,
       components: form.components.map((c) => ({ code: c.code, label: c.label, qtyPerUnit: c.qtyPerUnit })),
     };
-    if (!payload.name) return;
+    if (!payload.group || !payload.name) return;
     // Persist the group into the managed list so it can be reused/searched/deleted next time.
     if (payload.group) await ensureGroup(payload.group);
     if (editing) await updateProduct(editing.id, payload);
@@ -222,7 +233,7 @@ export default function ProductsPage() {
           <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
             <Button variant="outline" onClick={() => setGroupDialogOpen(true)}
               className="gap-2 rounded-xl border-indigo-500/30 bg-indigo-500/5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/15 font-semibold">
-              <Layers className="h-4 w-4" /> Add Group
+              <Layers className="h-4 w-4" /> Add Product Line
             </Button>
           </motion.div>
           <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
@@ -246,11 +257,22 @@ export default function ProductsPage() {
         ))}
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
-        <Input placeholder="Search products by name, code or group…" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-          className="pl-9 rounded-xl bg-card/70 glass border-border/40" />
+      {/* Search and product-code filter */}
+      <div className="flex max-w-3xl flex-col gap-3 sm:flex-row">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+          <Input placeholder="Search products by name or product line…" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+            className="pl-9 rounded-xl bg-card/70 glass border-border/40" />
+        </div>
+        <div className="sm:w-72">
+          <ProductCodeInput
+            value={codeSearch}
+            options={productCodeOptions}
+            onChange={(value) => { setCodeSearch(value); setPage(0); }}
+            placeholder="Filter by product code…"
+            clearable
+          />
+        </div>
       </div>
 
       {/* Table */}
@@ -263,8 +285,8 @@ export default function ProductsPage() {
               <thead>
                 <tr className="border-b border-border/30 bg-muted/20">
                   <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-12">#</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Product</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Group</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Product Title</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Product Line</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Code</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Components</th>
                   <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
@@ -287,11 +309,11 @@ export default function ProductsPage() {
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               {p.image ? <img src={thumbUrl(p.image, 72)} alt="" className="h-full w-full object-cover" /> : <Package className="h-4 w-4 text-primary" />}
                             </div>
-                            <p className="text-sm font-medium">{p.name}</p>
+                            <p className="text-sm font-medium">{formatProductTitle(p.group, p.name) || "—"}</p>
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          {p.group ? <span className="inline-flex items-center rounded-md bg-indigo-500/10 border border-indigo-500/25 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">{p.group}</span> : <span className="text-xs text-muted-foreground/40">—</span>}
+                          {p.group ? <span className="inline-flex items-center rounded-md bg-indigo-500/10 border border-indigo-500/25 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">{formatProductLine(p.group)}</span> : <span className="text-xs text-muted-foreground/40">—</span>}
                         </td>
                         <td className="px-4 py-3">
                           {p.code ? <span className="inline-flex items-center rounded-md bg-muted/50 border border-border/40 px-2 py-0.5 text-xs font-mono font-semibold">{p.code}</span> : <span className="text-xs text-muted-foreground/40">—</span>}
@@ -346,25 +368,32 @@ export default function ProductsPage() {
           <div className="space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Name *</Label>
-                <Input className="rounded-xl bg-muted/30 border-border/40" placeholder="e.g. Bag Charm Gold Bird" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Line *</Label>
+                <GroupCombo
+                  value={form.group}
+                  groups={groups}
+                  onChange={(v) => setForm((f) => ({ ...f, group: v }))}
+                  onDeleteGroup={requestDeleteGroup}
+                />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Code</Label>
-                <Input className="rounded-xl bg-muted/30 border-border/40 font-mono" placeholder="e.g. BC01" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} />
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Name *</Label>
+                <Input className="rounded-xl bg-muted/30 border-border/40" placeholder="e.g. 10 Downing Street" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
               </div>
             </div>
-
-            {/* Group — type a new name (saved on create) or pick/delete a saved one */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Group</Label>
-              <GroupCombo
-                value={form.group}
-                groups={groups}
-                onChange={(v) => setForm((f) => ({ ...f, group: v }))}
-                onDeleteGroup={requestDeleteGroup}
-              />
-              <p className="text-[11px] text-muted-foreground">Type a new group name to create it, or pick a saved one. New groups are saved when you create the product.</p>
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Code</Label>
+              <div className="max-w-xs">
+                <ProductCodeInput
+                  value={form.code}
+                  options={productCodeOptions}
+                  onChange={(value) => setForm((f) => ({ ...f, code: value }))}
+                  placeholder="e.g. LK001"
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Title preview: <span className="font-semibold text-foreground">{formatProductTitle(form.group, form.name) || "Product Line: Name"}</span>
+              </p>
             </div>
 
             {/* Product image */}
@@ -430,9 +459,9 @@ export default function ProductsPage() {
                     <p className="px-3 py-4 text-center text-xs text-muted-foreground">{compSearch ? "No matching components" : "Type to search components"}</p>
                   ) : (
                     availableComponents.map((it) => (
-                      <button key={it.id} onClick={() => addComponent({ code: it.code, label: it.description, qtyPerUnit: 1, componentId: it.id })}
+                      <button key={it.id} onClick={() => addComponent({ code: it.code, label: formatProductTitle(it.productLine, it.description), qtyPerUnit: 1, componentId: it.id })}
                         className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-accent/40 transition-colors border-b border-border/15 last:border-b-0">
-                        <span className="text-sm truncate">{it.description}</span>
+                        <span className="text-sm truncate">{formatProductTitle(it.productLine, it.description)}</span>
                         <span className="flex items-center gap-2 shrink-0">
                           {it.code && <span className="text-[10px] font-mono text-muted-foreground">{it.code}</span>}
                           <Plus className="h-3.5 w-3.5 text-primary" />
@@ -447,30 +476,30 @@ export default function ProductsPage() {
 
           <DialogFooter className="border-t border-border/30 pt-4">
             <Button variant="ghost" className="rounded-xl" onClick={closeDialogs}>Cancel</Button>
-            <Button onClick={submit} disabled={!form.name.trim()} className="rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold">
+            <Button onClick={submit} disabled={!form.group.trim() || !form.name.trim()} className="rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold">
               {editing ? "Save Changes" : "Create Product"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Add / manage groups */}
+      {/* Add / manage product lines */}
       <Dialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen}>
         <DialogContent className="sm:max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
-              <Layers className="h-4 w-4 text-primary" /> Product Groups
+              <Layers className="h-4 w-4 text-primary" /> Product Lines
             </DialogTitle>
           </DialogHeader>
           <p className="text-xs text-muted-foreground -mt-1">
-            Create a group without adding a product — it becomes searchable in client settings (Category Pricing) right away.
+            Create a product line without adding a product — it becomes searchable in client settings (Category Pricing) right away.
           </p>
           <div className="flex items-center gap-2">
             <Input
               value={newGroupName}
               onChange={(e) => setNewGroupName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") addGroup(); }}
-              placeholder="e.g. Keyrings"
+              placeholder="e.g. Large Keyring"
               className="rounded-xl bg-muted/30 border-border/40"
               autoFocus
             />
@@ -481,7 +510,7 @@ export default function ProductsPage() {
           </div>
           <div className="rounded-xl border border-border/40 bg-muted/10 max-h-56 overflow-y-auto">
             {groups.length === 0 ? (
-              <p className="px-3 py-4 text-center text-xs text-muted-foreground">No groups yet.</p>
+              <p className="px-3 py-4 text-center text-xs text-muted-foreground">No product lines yet.</p>
             ) : (
               groups.map((g) => (
                 <div key={g.id} className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/15 last:border-b-0">
@@ -504,8 +533,8 @@ export default function ProductsPage() {
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10 text-destructive shrink-0"><AlertTriangle className="h-5 w-5" /></div>
               <div>
-                <DialogTitle className="text-base font-bold">Delete this category?</DialogTitle>
-                <p className="text-xs text-muted-foreground mt-1">This removes the group everywhere and can&rsquo;t be undone.</p>
+                <DialogTitle className="text-base font-bold">Delete this product line?</DialogTitle>
+                <p className="text-xs text-muted-foreground mt-1">This removes the product line everywhere and can&rsquo;t be undone.</p>
               </div>
             </div>
           </DialogHeader>
@@ -530,7 +559,7 @@ export default function ProductsPage() {
               <div><DialogTitle className="text-base font-bold">Delete Product?</DialogTitle><p className="text-xs text-muted-foreground mt-1">This cannot be undone.</p></div>
             </div>
           </DialogHeader>
-          {toDelete && <div className="rounded-xl border border-border/40 bg-muted/20 px-4 py-3"><p className="text-sm font-semibold">{toDelete.name}</p>{toDelete.code && <p className="text-[11px] font-mono text-muted-foreground mt-1">{toDelete.code}</p>}</div>}
+          {toDelete && <div className="rounded-xl border border-border/40 bg-muted/20 px-4 py-3"><p className="text-sm font-semibold">{formatProductTitle(toDelete.group, toDelete.name)}</p>{toDelete.code && <p className="text-[11px] font-mono text-muted-foreground mt-1">{toDelete.code}</p>}</div>}
           <DialogFooter className="gap-2 sm:gap-2">
             <Button variant="ghost" className="rounded-xl" onClick={() => setToDelete(null)}>Cancel</Button>
             <Button variant="destructive" className="rounded-xl gap-1.5" onClick={confirmDelete}><Trash2 className="h-4 w-4" /> Delete</Button>
@@ -541,9 +570,76 @@ export default function ProductsPage() {
   );
 }
 
+function ProductCodeInput({
+  value,
+  options,
+  onChange,
+  placeholder,
+  clearable = false,
+}: {
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  placeholder: string;
+  clearable?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const q = value.trim().toLowerCase();
+  const matches = useMemo(() => {
+    if (!q) return options.slice(0, 12);
+    const startsWith = options.filter((code) => code.toLowerCase().startsWith(q));
+    const contains = options.filter(
+      (code) => !code.toLowerCase().startsWith(q) && code.toLowerCase().includes(q),
+    );
+    return [...startsWith, ...contains].slice(0, 12);
+  }, [options, q]);
+
+  return (
+    <div className="relative">
+      <Hash className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+      <Input
+        value={value}
+        onChange={(event) => { onChange(event.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 180)}
+        placeholder={placeholder}
+        autoComplete="off"
+        className={`rounded-xl border-border/40 bg-card/70 pl-9 font-mono ${clearable ? "pr-9" : ""}`}
+      />
+      {clearable && value && (
+        <button
+          type="button"
+          title="Clear product code filter"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => { onChange(""); setOpen(false); }}
+          className="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {open && matches.length > 0 && (
+        <div className="absolute z-40 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-border/40 bg-popover p-1 shadow-xl">
+          {matches.map((code) => (
+            <button
+              key={code}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => { onChange(code); setOpen(false); }}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left font-mono text-sm hover:bg-accent/60"
+            >
+              <Hash className="h-3.5 w-3.5 text-primary" />
+              {code}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
- * Group field: type a new name (created on save), or search/pick a saved group.
- * Each saved group in the dropdown has a cross to delete it from the managed list.
+ * Product-line field: type a new name (created on save), or search/pick a saved line.
+ * Each saved line in the dropdown has a cross to delete it from the managed list.
  */
 function GroupCombo({
   value, groups, onChange, onDeleteGroup,
@@ -565,7 +661,7 @@ function GroupCombo({
         onChange={(e) => { onChange(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 200)}
-        placeholder="Type a group name / select…"
+        placeholder="Type a product line / select…"
         className="rounded-xl bg-muted/30 border-border/40"
       />
       {open && (
@@ -573,18 +669,18 @@ function GroupCombo({
           {value.trim() && !exact && (
             <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(value.trim()); setOpen(false); }}
               className="flex w-full items-center px-3 py-2 text-left text-xs font-semibold text-primary hover:bg-accent/40 border-b border-border/10">
-              + Use &ldquo;{value.trim()}&rdquo; as a new group
+              + Use &ldquo;{value.trim()}&rdquo; as a new product line
             </button>
           )}
           {matches.map((g) => (
             <div key={g.id} className="flex items-center justify-between gap-1 px-1.5 py-0.5 hover:bg-accent/40 border-b border-border/10 last:border-b-0">
               <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(g.name); setOpen(false); }}
                 className="flex-1 min-w-0 truncate text-left text-sm px-1.5 py-1.5">{g.name}</button>
-              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onDeleteGroup(g.id)} title="Delete group"
+              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onDeleteGroup(g.id)} title="Delete product line"
                 className="shrink-0 p-1.5 text-muted-foreground/60 hover:text-destructive"><X className="h-3.5 w-3.5" /></button>
             </div>
           ))}
-          {matches.length === 0 && !value.trim() && <p className="px-3 py-2.5 text-xs text-muted-foreground">No groups yet — type one above.</p>}
+          {matches.length === 0 && !value.trim() && <p className="px-3 py-2.5 text-xs text-muted-foreground">No product lines yet — type one above.</p>}
         </div>
       )}
     </div>

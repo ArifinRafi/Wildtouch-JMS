@@ -58,6 +58,7 @@ const navigation: NavItem[] = [
   { title: "Digital Whiteboard", href: "/digital-whiteboard", icon: Monitor, section: "operations" },
   { title: "Task Manager", href: "/task-manager", icon: ListChecks, section: "operations" },
   { title: "Orders", href: "/orders", icon: ShoppingCart, section: "operations" },
+  { title: "Back Orders", href: "/back-orders", icon: CalendarClock, section: "operations" },
   { title: "Design Tracker", href: "/design-tracker", icon: PenTool, section: "operations" },
   { title: "River", href: "/river", icon: Waves, section: "operations" },
   {

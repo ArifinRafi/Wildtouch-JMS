@@ -10,7 +10,7 @@ import {
   MapPin,
   FileText,
   PackageCheck,
-  PoundSterling,
+  Coins,
   Store,
   Save,
   X,
@@ -34,18 +34,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import { CategoryPriceEditor } from "@/components/clients/category-price-editor";
 import { useAppStore } from "@/lib/store/app-store";
-import type { Client, AdditionalContact } from "@/lib/store/app-store";
-import { type AccountStatus } from "@/lib/mock-data/clients";
+import type { Client, AdditionalContact, ClientIssue, ClientNote } from "@/lib/store/app-store";
+import { ACCOUNT_STATUS_OPTIONS, type AccountStatus } from "@/lib/client-status";
+import { useRole } from "@/lib/hooks/use-role";
+import { useAgents } from "@/lib/hooks/use-agents";
+import type { SupportedCurrency } from "@/lib/currency";
 
 // ─── Form types ─────────────────────────────────────────────────────────────
 interface ClientForm {
   name: string;
   motherCompany: string;
+  companyNumber: string;
+  agentId: string;
   mainBuyerNames: string;
-  otherContactAndPosition: string;
+  primaryContactName: string;
+  primaryContactPosition: string;
+  furtherContactName: string;
+  furtherContactPosition: string;
+  furtherContactNumber: string;
   contactNumber: string;
   mobOther: string;
   email: string;
@@ -57,6 +65,8 @@ interface ClientForm {
   accountStatus: string;
   address: string;
   city: string;
+  postcode: string;
+  region: string;
   invoiceAddressFull: string;
   deliveryAddress: string;
   deliveryInstructions: string;
@@ -67,11 +77,15 @@ interface ClientForm {
   topSellingAnimals: string;
   slowSellerDesigns: string;
   substituteDesigns: boolean;
+  substituteDesignNotes: string;
+  complaintsIssues: ClientIssue[];
+  clientNotes: ClientNote[];
   standsInfo: string;
   upsellInfo: string;
   cardsUsed: string;
   boxesUsed: string;
   specialInformation: string;
+  pricingCurrency: SupportedCurrency;
   categoryPrices: Record<string, string>;
   additionalContacts: AdditionalContact[];
   brandCardImage: string;
@@ -82,8 +96,14 @@ function emptyForm(): ClientForm {
   return {
     name: "",
     motherCompany: "",
+    companyNumber: "",
+    agentId: "",
     mainBuyerNames: "",
-    otherContactAndPosition: "",
+    primaryContactName: "",
+    primaryContactPosition: "",
+    furtherContactName: "",
+    furtherContactPosition: "",
+    furtherContactNumber: "",
     contactNumber: "",
     mobOther: "",
     email: "",
@@ -92,9 +112,11 @@ function emptyForm(): ClientForm {
     giftShopContactNo: "",
     webAddress: "",
     history: "good",
-    accountStatus: "active",
+    accountStatus: "new_client",
     address: "",
     city: "",
+    postcode: "",
+    region: "",
     invoiceAddressFull: "",
     deliveryAddress: "",
     deliveryInstructions: "",
@@ -105,11 +127,15 @@ function emptyForm(): ClientForm {
     topSellingAnimals: "",
     slowSellerDesigns: "",
     substituteDesigns: false,
+    substituteDesignNotes: "",
+    complaintsIssues: [],
+    clientNotes: [],
     standsInfo: "",
     upsellInfo: "",
     cardsUsed: "",
     boxesUsed: "",
     specialInformation: "",
+    pricingCurrency: "GBP",
     categoryPrices: {},
     additionalContacts: [],
     brandCardImage: "",
@@ -121,6 +147,8 @@ function emptyForm(): ClientForm {
 export default function NewClientPage() {
   const router = useRouter();
   const store = useAppStore();
+  const { isAdmin } = useRole();
+  const { agents } = useAgents();
 
   const [form, setForm] = useState<ClientForm>(emptyForm());
   const [formError, setFormError] = useState("");
@@ -172,6 +200,57 @@ export default function NewClientPage() {
     [],
   );
 
+  // ── Dated complaints and issues ──
+  const addComplaintIssue = useCallback(() => {
+    setForm((prev) => ({
+      ...prev,
+      complaintsIssues: [
+        ...prev.complaintsIssues,
+        { date: new Date().toISOString().slice(0, 10), type: "complaint", note: "" },
+      ],
+    }));
+  }, []);
+  const removeComplaintIssue = useCallback((idx: number) => {
+    setForm((prev) => ({
+      ...prev,
+      complaintsIssues: prev.complaintsIssues.filter((_, i) => i !== idx),
+    }));
+  }, []);
+  const updateComplaintIssue = useCallback(
+    (idx: number, key: keyof ClientIssue, value: string) => {
+      setForm((prev) => ({
+        ...prev,
+        complaintsIssues: prev.complaintsIssues.map((item, i) =>
+          i === idx ? { ...item, [key]: value } as ClientIssue : item,
+        ),
+      }));
+    },
+    [],
+  );
+
+  // ── General client notes with an automatic date stamp ──
+  const addClientNote = useCallback(() => {
+    setForm((prev) => ({
+      ...prev,
+      clientNotes: [
+        ...prev.clientNotes,
+        { date: new Date().toISOString().slice(0, 10), note: "" },
+      ],
+    }));
+  }, []);
+  const removeClientNote = useCallback((idx: number) => {
+    setForm((prev) => ({
+      ...prev,
+      clientNotes: prev.clientNotes.filter((_, i) => i !== idx),
+    }));
+  }, []);
+  const updateClientNote = useCallback((idx: number, note: string) => {
+    setForm((prev) => ({
+      ...prev,
+      clientNotes: prev.clientNotes.map((item, i) => (i === idx ? { ...item, note } : item)),
+    }));
+  }, []);
+
   // ── Image uploads (Cloudinary) ──
   const handleImageUpload = useCallback(
     async (key: "brandCardImage" | "barcodeImage", file: File | null) => {
@@ -201,7 +280,7 @@ export default function NewClientPage() {
     }
     setFormError("");
 
-    // Per-category prices (product group → £) — drives category-level invoicing.
+    // Per-category prices (product group → selected client currency) drive invoicing.
     const categoryPricesObj: Record<string, number> = {};
     for (const [cat, raw] of Object.entries(form.categoryPrices)) {
       if (raw && raw.trim()) {
@@ -210,6 +289,7 @@ export default function NewClientPage() {
       }
     }
     const hasCategoryPrices = Object.keys(categoryPricesObj).length > 0;
+    const selectedAgent = agents.find((agent) => agent.id === form.agentId);
 
     const cleanedAdditionalContacts = form.additionalContacts
       .map((c) => ({
@@ -218,27 +298,43 @@ export default function NewClientPage() {
         address: c.address?.trim() || "",
       }))
       .filter((c) => c.name || c.contactNumber || c.address);
+    const cleanedComplaintsIssues = form.complaintsIssues
+      .map((item) => ({
+        date: item.date.trim(),
+        type: item.type,
+        note: item.note.trim(),
+      }))
+      .filter((item) => item.date || item.note);
+    const cleanedClientNotes = form.clientNotes
+      .map((item) => ({ date: item.date.trim(), note: item.note.trim() }))
+      .filter((item) => item.note);
 
     const data: Omit<Client, "id"> = {
       name: form.name.trim(),
       address: form.address.trim(),
       city: form.city.trim(),
+      postcode: form.postcode.trim(),
+      region: form.region.trim(),
       contactNumber: form.contactNumber.trim(),
       email: form.email.trim(),
       history: (form.history as "good" | "bad") || "good",
-      accountStatus: (form.accountStatus as AccountStatus) || "active",
+      accountStatus: (form.accountStatus as AccountStatus) || "new_client",
       lastOrder: "0 days ago",
       totalOrders: 0,
       ...(form.motherCompany.trim() && { motherCompany: form.motherCompany.trim() }),
+      ...(form.companyNumber.trim() && { companyNumber: form.companyNumber.trim() }),
+      ...(selectedAgent && { agentId: selectedAgent.id, agentName: selectedAgent.name }),
       ...(cleanedAdditionalContacts.length > 0 && {
         additionalContacts: cleanedAdditionalContacts,
       }),
       ...(form.brandCardImage && { brandCardImage: form.brandCardImage }),
       ...(form.barcodeImage && { barcodeImage: form.barcodeImage }),
       ...(form.mainBuyerNames.trim() && { mainBuyerNames: form.mainBuyerNames.trim() }),
-      ...(form.otherContactAndPosition.trim() && {
-        otherContactAndPosition: form.otherContactAndPosition.trim(),
-      }),
+      ...(form.primaryContactName.trim() && { primaryContactName: form.primaryContactName.trim() }),
+      ...(form.primaryContactPosition.trim() && { primaryContactPosition: form.primaryContactPosition.trim() }),
+      ...(form.furtherContactName.trim() && { furtherContactName: form.furtherContactName.trim() }),
+      ...(form.furtherContactPosition.trim() && { furtherContactPosition: form.furtherContactPosition.trim() }),
+      ...(form.furtherContactNumber.trim() && { furtherContactNumber: form.furtherContactNumber.trim() }),
       ...(form.mobOther.trim() && { mobOther: form.mobOther.trim() }),
       ...(form.emailOther.trim() && { emailOther: form.emailOther.trim() }),
       ...(form.shopManagerName.trim() && { shopManagerName: form.shopManagerName.trim() }),
@@ -258,11 +354,21 @@ export default function NewClientPage() {
       ...(form.topSellingAnimals.trim() && { topSellingAnimals: form.topSellingAnimals.trim() }),
       ...(form.slowSellerDesigns.trim() && { slowSellerDesigns: form.slowSellerDesigns.trim() }),
       substituteDesigns: form.substituteDesigns,
+      ...(form.substituteDesignNotes.trim() && {
+        substituteDesignNotes: form.substituteDesignNotes.trim(),
+      }),
+      ...(cleanedComplaintsIssues.length > 0 && { complaintsIssues: cleanedComplaintsIssues }),
+      ...(cleanedClientNotes.length > 0 && { clientNotes: cleanedClientNotes }),
       ...(form.standsInfo.trim() && { standsInfo: form.standsInfo.trim() }),
       ...(form.upsellInfo.trim() && { upsellInfo: form.upsellInfo.trim() }),
       ...(form.cardsUsed.trim() && { cardsUsed: form.cardsUsed.trim() }),
       ...(form.boxesUsed.trim() && { boxesUsed: form.boxesUsed.trim() }),
-      ...(hasCategoryPrices && { categoryPrices: categoryPricesObj }),
+      ...(isAdmin
+        ? {
+            pricingCurrency: form.pricingCurrency,
+            ...(hasCategoryPrices && { categoryPrices: categoryPricesObj }),
+          }
+        : {}),
       ...(form.specialInformation.trim() && {
         specialInformation: form.specialInformation.trim(),
       }),
@@ -270,7 +376,7 @@ export default function NewClientPage() {
 
     store.addClient(data);
     router.push("/clients");
-  }, [form, store, router]);
+  }, [agents, form, isAdmin, store, router]);
 
   const inputCls = "rounded-xl bg-muted/30 border-border/40";
 
@@ -328,13 +434,67 @@ export default function NewClientPage() {
               />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Company Number</Label>
+              <Input
+                className={inputCls}
+                placeholder="Registered company number"
+                value={form.companyNumber}
+                onChange={(e) => setField("companyNumber", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Agent Name</Label>
+              <Select
+                value={form.agentId || "unassigned"}
+                onValueChange={(value) => value && setField("agentId", value === "unassigned" ? "" : value)}
+              >
+                <SelectTrigger className={inputCls} aria-label="Agent Name">
+                  <SelectValue placeholder="Select an agent" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {agents.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <div className="space-y-1.5">
             <Label>Main Buyer Names</Label>
             <Input className={inputCls} value={form.mainBuyerNames} onChange={(e) => setField("mainBuyerNames", e.target.value)} />
           </div>
-          <div className="space-y-1.5">
-            <Label>Other Contact & Position</Label>
-            <Input className={inputCls} value={form.otherContactAndPosition} onChange={(e) => setField("otherContactAndPosition", e.target.value)} />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Primary Contact</Label>
+              <Input className={inputCls} value={form.primaryContactName} onChange={(e) => setField("primaryContactName", e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Position</Label>
+              <Input className={inputCls} value={form.primaryContactPosition} onChange={(e) => setField("primaryContactPosition", e.target.value)} />
+            </div>
+          </div>
+          <div className="space-y-3 rounded-xl border border-border/40 bg-muted/10 p-4">
+            <div>
+              <Label className="text-sm font-semibold">Further Contact</Label>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Add another contact person for this client.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label>Name</Label>
+                <Input className={inputCls} value={form.furtherContactName} onChange={(e) => setField("furtherContactName", e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Position</Label>
+                <Input className={inputCls} value={form.furtherContactPosition} onChange={(e) => setField("furtherContactPosition", e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Contact Number</Label>
+                <Input className={inputCls} value={form.furtherContactNumber} onChange={(e) => setField("furtherContactNumber", e.target.value)} />
+              </div>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -386,10 +546,9 @@ export default function NewClientPage() {
               <Select value={form.accountStatus} onValueChange={(v) => v && setField("accountStatus", v)}>
                 <SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="proforma">Proforma</SelectItem>
-                  <SelectItem value="on_hold">On Hold</SelectItem>
-                  <SelectItem value="bad_credit">Bad Credit</SelectItem>
+                  {ACCOUNT_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -499,6 +658,16 @@ export default function NewClientPage() {
               <Input className={inputCls} value={form.city} onChange={(e) => setField("city", e.target.value)} />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Postcode</Label>
+              <Input className={inputCls} value={form.postcode} onChange={(e) => setField("postcode", e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Region</Label>
+              <Input className={inputCls} value={form.region} onChange={(e) => setField("region", e.target.value)} />
+            </div>
+          </div>
           <div className="space-y-1.5">
             <Label>Full Invoice Address</Label>
             <Textarea className={inputCls} rows={3} value={form.invoiceAddressFull} onChange={(e) => setField("invoiceAddressFull", e.target.value)} />
@@ -555,15 +724,26 @@ export default function NewClientPage() {
             <Label>Slow Seller Designs</Label>
             <Textarea className={inputCls} rows={3} value={form.slowSellerDesigns} onChange={(e) => setField("slowSellerDesigns", e.target.value)} />
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              id="new-substituteDesigns"
-              type="checkbox"
-              checked={form.substituteDesigns}
-              onChange={(e) => setField("substituteDesigns", e.target.checked)}
-              className="h-4 w-4 rounded border-border/40"
-            />
-            <Label htmlFor="new-substituteDesigns">Substitute Designs</Label>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[auto_minmax(0,1fr)] md:items-end">
+            <div className="flex h-10 items-center gap-2">
+              <input
+                id="new-substituteDesigns"
+                type="checkbox"
+                checked={form.substituteDesigns}
+                onChange={(e) => setField("substituteDesigns", e.target.checked)}
+                className="h-4 w-4 rounded border-border/40"
+              />
+              <Label htmlFor="new-substituteDesigns">Substitute Designs</Label>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Substitute Design Notes</Label>
+              <Input
+                className={inputCls}
+                placeholder="Add substitute design details"
+                value={form.substituteDesignNotes}
+                onChange={(e) => setField("substituteDesignNotes", e.target.value)}
+              />
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label>Stands Info</Label>
@@ -586,20 +766,71 @@ export default function NewClientPage() {
         </div>
       </Section>
 
-      {/* ── Section 5: Pricing (per product group, drives invoices) ── */}
-      <Section title="Pricing" icon={<PoundSterling className="h-4 w-4" />}>
-        <p className="text-[11px] text-muted-foreground -mt-1 mb-3">
-          Price per <span className="font-semibold">product group</span> for this client. Groups are created on the
-          Products page (Add Group) — here you search an existing group, set this client&rsquo;s price, and add it.
-          Invoices bill each planogram product at its group&rsquo;s price.
-        </p>
-        <CategoryPriceEditor
-          categories={productCategories}
-          value={form.categoryPrices}
-          onChange={(next) => setForm((prev) => ({ ...prev, categoryPrices: next }))}
-          inputCls={inputCls}
-        />
+      {/* ── Complaints & Issues: dated note cards ── */}
+      <Section title="Complaints &amp; Issues" icon={<FileText className="h-4 w-4" />}>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Keep a dated history of complaints and issues for this client.
+            </p>
+            <Button type="button" size="sm" variant="outline" className="gap-1.5 rounded-xl" onClick={addComplaintIssue}>
+              <Plus className="h-3.5 w-3.5" /> Add Entry
+            </Button>
+          </div>
+          {form.complaintsIssues.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border/40 bg-muted/10 px-4 py-6 text-center text-xs text-muted-foreground">
+              No complaints or issues recorded.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {form.complaintsIssues.map((item, idx) => (
+                <div key={idx} className="rounded-md border border-border/30 bg-muted/20 p-3">
+                  <div className="grid gap-3 md:grid-cols-[170px_160px_auto] md:items-end">
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px]">Date</Label>
+                      <Input type="date" className={inputCls} value={item.date} onChange={(e) => updateComplaintIssue(idx, "date", e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px]">Type</Label>
+                      <Select value={item.type} onValueChange={(value) => value && updateComplaintIssue(idx, "type", value)}>
+                        <SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="complaint">Complaint</SelectItem>
+                          <SelectItem value="issue">Issue</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button type="button" size="sm" variant="outline" className="justify-self-start text-destructive md:justify-self-end" onClick={() => removeComplaintIssue(idx)}>
+                      <X className="h-3.5 w-3.5" /> Remove
+                    </Button>
+                  </div>
+                  <div className="mt-3 space-y-1.5">
+                    <Label className="text-[11px]">Complaint or issue notes</Label>
+                    <Textarea className={inputCls} rows={3} value={item.note} onChange={(e) => updateComplaintIssue(idx, "note", e.target.value)} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </Section>
+
+      {/* ── Section 5: Pricing (admin only) ── */}
+      {isAdmin && (
+        <Section title="Pricing" icon={<Coins className="h-4 w-4" />}>
+          <p className="text-[11px] text-muted-foreground -mt-1 mb-3">
+            Choose pounds or euros, then add this client&rsquo;s price for each product group. Invoices use the selected currency.
+          </p>
+          <CategoryPriceEditor
+            categories={productCategories}
+            value={form.categoryPrices}
+            onChange={(next) => setForm((prev) => ({ ...prev, categoryPrices: next }))}
+            currency={form.pricingCurrency}
+            onCurrencyChange={(pricingCurrency) => setForm((prev) => ({ ...prev, pricingCurrency }))}
+            inputCls={inputCls}
+          />
+        </Section>
+      )}
 
       {/* ── Section 6: Brand Card + Barcode ── */}
       <Section title="Brand Card &amp; Barcode" icon={<ImageIcon className="h-4 w-4" />}>
@@ -626,7 +857,48 @@ export default function NewClientPage() {
         )}
       </Section>
 
-      {/* ── Section 7: Special Information ── */}
+      {/* ── Client Notes: automatic date-stamped history ── */}
+      <Section title="Client Notes" icon={<FileText className="h-4 w-4" />}>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Notes are automatically stamped with the date they are added.
+            </p>
+            <Button type="button" size="sm" variant="outline" className="gap-1.5 rounded-xl" onClick={addClientNote}>
+              <Plus className="h-3.5 w-3.5" /> Add Note
+            </Button>
+          </div>
+          {form.clientNotes.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border/40 bg-muted/10 px-4 py-6 text-center text-xs text-muted-foreground">
+              No client notes recorded.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {form.clientNotes.map((item, idx) => (
+                <div key={idx} className="rounded-md border border-border/30 bg-muted/20 px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] tabular-nums text-muted-foreground">
+                      {new Date(`${item.date}T00:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                    </span>
+                    <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={() => removeClientNote(idx)}>
+                      <X className="h-3.5 w-3.5" /> Remove
+                    </Button>
+                  </div>
+                  <Textarea
+                    className={`${inputCls} mt-2`}
+                    rows={3}
+                    placeholder="Add a client note"
+                    value={item.note}
+                    onChange={(e) => updateClientNote(idx, e.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Section>
+
+      {/* ── Section 8: Special Information ── */}
       <Section title="Special Information" icon={<Store className="h-4 w-4" />}>
         <div className="space-y-1.5">
           <Textarea

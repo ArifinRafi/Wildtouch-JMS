@@ -8,6 +8,7 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
+import type { OrderSource } from "@/lib/order-source";
 
 export interface OrderLineItem {
   code: string;
@@ -28,12 +29,24 @@ export interface OrderComponentRequirement {
 export interface OrderClientSnapshot {
   clientId?: string;
   name?: string;
+  contactName?: string;
+  companyName?: string;
   email?: string;
   contactNumber?: string;
   invoiceAddress?: string;
   deliveryAddress?: string;
+  brandCardImage?: string;
+  barcodeImage?: string;
   /** VAT rate (%) carried from the client, used for the invoice. */
   vatRate?: number;
+}
+
+export interface OrderAgentSnapshot {
+  agentId?: string;
+  name?: string;
+  email?: string;
+  contactNumber?: string;
+  city?: string;
 }
 
 export interface Order {
@@ -42,12 +55,17 @@ export interface Order {
   status: string;
   planogram: { id: string; name: string };
   client: OrderClientSnapshot;
+  agent: OrderAgentSnapshot;
+  orderSource: OrderSource | "";
   lineItems: OrderLineItem[];
   componentRequirements: OrderComponentRequirement[];
   subtotal: number;
   total: number;
+  currency?: "GBP" | "EUR";
   /** Sum of partial-invoice payments issued so far. */
   amountInvoiced?: number;
+  poNumber: string;
+  referenceNumber: string;
   notes: string;
   inventoryDeducted: boolean;
   createdAt: string | null;

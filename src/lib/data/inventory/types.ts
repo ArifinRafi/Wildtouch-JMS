@@ -8,6 +8,8 @@ export interface InventoryComponent {
 }
 
 export interface InventoryItem {
+  /** Sellable product family, displayed before the name (e.g. "Magnet"). */
+  productLine?: string;
   /** Product description / design */
   description: string;
   /** Finished whole-product code */

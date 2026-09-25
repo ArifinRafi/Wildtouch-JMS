@@ -19,6 +19,12 @@ export async function POST(request: NextRequest) {
   const docs = getOrderablePlanograms().flatMap((pg) =>
     pg.products.map((p) => ({
       name: p.description,
+      group:
+        pg.id === "all-designs-large-keyrings"
+          ? "Large Keyrings"
+          : pg.id === "all-designs-magnets"
+            ? "Magnets"
+            : p.segment,
       planogramId: pg.id,
       planogramName: pg.name,
       segment: p.segment,

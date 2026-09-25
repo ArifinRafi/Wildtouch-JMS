@@ -12,6 +12,8 @@ import { type Client } from "@/lib/mock-data/clients";
 export type { Client } from "@/lib/mock-data/clients";
 export type { ClientPricing } from "@/lib/mock-data/clients";
 export type { AdditionalContact } from "@/lib/mock-data/clients";
+export type { ClientIssue } from "@/lib/mock-data/clients";
+export type { ClientNote } from "@/lib/mock-data/clients";
 
 // ─── Shared Types ──────────────────────────────────────────────────────────────
 export interface ProductionStaff {

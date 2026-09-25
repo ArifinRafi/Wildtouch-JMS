@@ -21,6 +21,7 @@ import {
   Eye,
   Trash2,
   AlertTriangle,
+  Download,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -41,42 +42,66 @@ import {
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/lib/store/app-store";
 import type { Client } from "@/lib/store/app-store";
-import { type AccountStatus } from "@/lib/mock-data/clients";
+import {
+  ACCOUNT_STATUS_OPTIONS,
+  normalizeAccountStatus,
+  type AccountStatus,
+} from "@/lib/client-status";
+import { useRole } from "@/lib/hooks/use-role";
+import { useAgents } from "@/lib/hooks/use-agents";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-function parseDaysAgo(str: string): number {
-  const m = str.match(/(\d+)\s+days?\s+ago/i);
+function parseDaysAgo(str?: string): number {
+  const m = (str ?? "").match(/(\d+)\s+days?\s+ago/i);
   return m ? parseInt(m[1], 10) : 0;
+}
+
+/** Convert the human-readable last-order value into an age for chronological sorting. */
+function parseLastOrderAge(str?: string): number {
+  const value = (str ?? "").trim().toLowerCase();
+  if (!value || value === "no orders yet" || value === "never") return Number.POSITIVE_INFINITY;
+  if (value === "today") return 0;
+  if (value === "yesterday") return 1;
+
+  const relative = value.match(/(\d+)\s+(day|week|month|year)s?\s+ago/);
+  if (relative) {
+    const amount = Number(relative[1]);
+    const multiplier = { day: 1, week: 7, month: 30, year: 365 }[
+      relative[2] as "day" | "week" | "month" | "year"
+    ];
+    return amount * multiplier;
+  }
+
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return Number.POSITIVE_INFINITY;
+  return Math.max(0, Math.floor((Date.now() - timestamp) / 86_400_000));
 }
 const INACTIVE_THRESHOLD = 60;
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const statusConfig: Record<AccountStatus, { label: string; className: string }> = {
-  active: {
-    label: "Active",
-    className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-  },
-  proforma: {
-    label: "Proforma",
+  new_client: {
+    label: "New Client",
     className: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
   },
-  on_hold: {
-    label: "On Hold",
+  potential_client: {
+    label: "Potential Client",
+    className: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20",
+  },
+  previous_client: {
+    label: "Previous Client",
     className: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
   },
-  bad_credit: {
-    label: "Bad Credit",
-    className: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
+  existing_client: {
+    label: "Existing Client",
+    className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
   },
 };
 
 const filterOptions: { label: string; value: string }[] = [
   { label: "All Clients", value: "all" },
-  { label: "Active", value: "active" },
+  ...ACCOUNT_STATUS_OPTIONS,
   { label: "Inactive", value: "inactive" },
-  { label: "Proforma", value: "proforma" },
-  { label: "On Hold", value: "on_hold" },
-  { label: "Bad Credit", value: "bad_credit" },
   { label: "Good History", value: "good" },
   { label: "Bad History", value: "bad" },
 ];
@@ -85,9 +110,18 @@ const filterOptions: { label: string; value: string }[] = [
 export default function ClientsPage() {
   const store = useAppStore();
   const clientList = store.clients;
+  const { isAdmin } = useRole();
+  const { agents } = useAgents();
+  const agentNameById = useMemo(
+    () => new Map(agents.map((agent) => [agent.id, agent.name])),
+    [agents],
+  );
 
   // ── Filter / search / sort ──
   const [search, setSearch] = useState("");
+  const [postcodeFilter, setPostcodeFilter] = useState("");
+  const [regionFilter, setRegionFilter] = useState("");
+  const [agentSearch, setAgentSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [sortField, setSortField] = useState<keyof Client>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -102,8 +136,31 @@ export default function ClientsPage() {
         (c) =>
           c.name.toLowerCase().includes(q) ||
           c.city.toLowerCase().includes(q) ||
+          (c.postcode ?? "").toLowerCase().includes(q) ||
+          (c.region ?? "").toLowerCase().includes(q) ||
+          (c.companyNumber ?? "").toLowerCase().includes(q) ||
+          (agentNameById.get(c.agentId ?? "") || c.agentName || "").toLowerCase().includes(q) ||
           c.email.toLowerCase().includes(q) ||
           c.contactNumber.includes(q),
+      );
+    }
+
+    if (postcodeFilter.trim()) {
+      const postcode = postcodeFilter.trim().toLowerCase();
+      list = list.filter((c) => (c.postcode ?? "").toLowerCase().includes(postcode));
+    }
+
+    if (regionFilter.trim()) {
+      const region = regionFilter.trim().toLowerCase();
+      list = list.filter((c) => (c.region ?? "").toLowerCase().includes(region));
+    }
+
+    if (agentSearch.trim()) {
+      const agent = agentSearch.trim().toLowerCase();
+      list = list.filter((c) =>
+        (agentNameById.get(c.agentId ?? "") || c.agentName || "")
+          .toLowerCase()
+          .includes(agent),
       );
     }
 
@@ -113,18 +170,37 @@ export default function ClientsPage() {
       } else if (filter === "inactive") {
         list = list.filter((c) => parseDaysAgo(c.lastOrder) > INACTIVE_THRESHOLD);
       } else {
-        list = list.filter((c) => c.accountStatus === filter);
+        list = list.filter((c) => normalizeAccountStatus(c.accountStatus) === filter);
       }
     }
 
     list.sort((a, b) => {
+      if (sortField === "lastOrder") {
+        const aAge = parseLastOrderAge(a.lastOrder);
+        const bAge = parseLastOrderAge(b.lastOrder);
+
+        // Clients without an order stay at the end in either direction.
+        if (!Number.isFinite(aAge)) return Number.isFinite(bAge) ? 1 : a.name.localeCompare(b.name);
+        if (!Number.isFinite(bAge)) return -1;
+
+        const ageDifference = aAge - bAge;
+        if (ageDifference !== 0) return sortDir === "asc" ? ageDifference : -ageDifference;
+        return a.name.localeCompare(b.name);
+      }
+
+      if (sortField === "agentName") {
+        const av = (agentNameById.get(a.agentId ?? "") || a.agentName || "").toLowerCase();
+        const bv = (agentNameById.get(b.agentId ?? "") || b.agentName || "").toLowerCase();
+        return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      }
+
       const av = String(a[sortField]).toLowerCase();
       const bv = String(b[sortField]).toLowerCase();
       return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
     });
 
     return list;
-  }, [clientList, search, filter, sortDir, sortField]);
+  }, [agentNameById, agentSearch, clientList, search, postcodeFilter, regionFilter, filter, sortDir, sortField]);
 
   const toggleSort = (field: keyof Client) => {
     if (sortField === field) {
@@ -138,7 +214,9 @@ export default function ClientsPage() {
   // ── Chip counts ──
   const goodCount = clientList.filter((c) => c.history === "good").length;
   const badCount = clientList.filter((c) => c.history === "bad").length;
-  const activeCount = clientList.filter((c) => c.accountStatus === "active").length;
+  const existingCount = clientList.filter(
+    (c) => normalizeAccountStatus(c.accountStatus) === "existing_client",
+  ).length;
   const inactiveCount = clientList.filter(
     (c) => parseDaysAgo(c.lastOrder) > INACTIVE_THRESHOLD,
   ).length;
@@ -173,16 +251,28 @@ export default function ClientsPage() {
             {clientList.length} registered clients
           </p>
         </div>
-        <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-          <Link href="/clients/new">
-            <Button
-              className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 hover:from-primary/90 hover:to-indigo-500/90 shadow-lg shadow-primary/20 text-white font-semibold"
-            >
-              <Plus className="h-4 w-4" />
-              Add Client
-            </Button>
-          </Link>
-        </motion.div>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+              <Link href="/api/clients/export">
+                <Button variant="outline" className="gap-2 rounded-xl border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/15">
+                  <Download className="h-4 w-4" />
+                  Download All Excel
+                </Button>
+              </Link>
+            </motion.div>
+          )}
+          <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+            <Link href="/clients/new">
+              <Button
+                className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 hover:from-primary/90 hover:to-indigo-500/90 shadow-lg shadow-primary/20 text-white font-semibold"
+              >
+                <Plus className="h-4 w-4" />
+                Add Client
+              </Button>
+            </Link>
+          </motion.div>
+        </div>
       </motion.div>
 
       {/* ── Summary / Filter Chips ── */}
@@ -262,7 +352,7 @@ export default function ClientsPage() {
         })()}
 
         {(() => {
-          const isActive = filter === "active";
+          const isActive = filter === "existing_client";
           return (
             <motion.button
               initial={{ opacity: 0, scale: 0.9 }}
@@ -270,7 +360,7 @@ export default function ClientsPage() {
               transition={{ delay: 0.28 }}
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.96 }}
-              onClick={() => setFilter(isActive ? "all" : "active")}
+              onClick={() => setFilter(isActive ? "all" : "existing_client")}
               className={cn(
                 "flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-all",
                 isActive
@@ -279,7 +369,7 @@ export default function ClientsPage() {
               )}
             >
               <Building2 className="h-4 w-4" />
-              Active: {activeCount}
+              Existing Clients: {existingCount}
             </motion.button>
           );
         })()}
@@ -313,17 +403,96 @@ export default function ClientsPage() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.1 }}
-        className="flex flex-col sm:flex-row gap-3"
+        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[minmax(240px,1fr)_175px_175px_180px_190px_170px]"
       >
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
           <Input
-            placeholder="Search by name, city, email, phone..."
+            placeholder="Search by client, company, city, email..."
             className="pl-9 rounded-xl bg-muted/30 border-border/40"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        <div className="relative">
+          <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+          <Input
+            aria-label="Filter clients by postcode"
+            placeholder="Filter by postcode"
+            className="pl-9 rounded-xl bg-muted/30 border-border/40"
+            value={postcodeFilter}
+            onChange={(e) => setPostcodeFilter(e.target.value)}
+          />
+        </div>
+        <div className="relative">
+          <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+          <Input
+            aria-label="Filter clients by region"
+            placeholder="Filter by region"
+            className="pl-9 rounded-xl bg-muted/30 border-border/40"
+            value={regionFilter}
+            onChange={(e) => setRegionFilter(e.target.value)}
+          />
+        </div>
+        <div className="relative">
+          <Users className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+          <Input
+            aria-label="Search clients by agent"
+            placeholder="Search by agent"
+            className="pl-9 rounded-xl bg-muted/30 border-border/40"
+            value={agentSearch}
+            onChange={(e) => setAgentSearch(e.target.value)}
+          />
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label="Sort clients by latest order"
+            className="flex items-center gap-2 rounded-xl border border-border/40 bg-card/70 glass px-4 py-2 text-sm font-medium hover:bg-accent/40 transition-colors focus-visible:outline-none min-w-[180px] justify-between"
+          >
+            <div className="flex items-center gap-2">
+              <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+              <span>
+                {sortField === "lastOrder"
+                  ? sortDir === "asc"
+                    ? "Newest orders first"
+                    : "Oldest orders first"
+                  : "Sort by latest order"}
+              </span>
+            </div>
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="w-56 glass-strong bg-popover/95 border-border/40 rounded-2xl p-1"
+          >
+            <DropdownMenuItem
+              onClick={() => {
+                setSortField("lastOrder");
+                setSortDir("asc");
+              }}
+              className={cn(
+                "rounded-xl cursor-pointer text-sm",
+                sortField === "lastOrder" && sortDir === "asc" &&
+                  "bg-primary/10 text-primary font-semibold",
+              )}
+            >
+              Newest orders first
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setSortField("lastOrder");
+                setSortDir("desc");
+              }}
+              className={cn(
+                "rounded-xl cursor-pointer text-sm",
+                sortField === "lastOrder" && sortDir === "desc" &&
+                  "bg-primary/10 text-primary font-semibold",
+              )}
+            >
+              Oldest orders first
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <DropdownMenu>
           <DropdownMenuTrigger className="flex items-center gap-2 rounded-xl border border-border/40 bg-card/70 glass px-4 py-2 text-sm font-medium hover:bg-accent/40 transition-colors focus-visible:outline-none min-w-[160px] justify-between">
             <div className="flex items-center gap-2">
@@ -360,11 +529,13 @@ export default function ClientsPage() {
         className="rounded-2xl border border-border/40 bg-card/70 glass overflow-hidden"
       >
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[700px] border-collapse">
+          <table className="w-full min-w-[1000px] border-collapse">
             <thead>
               <tr className="border-b border-border/30 bg-muted/20">
                 {[
                   { label: "Client Name", field: "name" as keyof Client, w: "w-[260px]" },
+                  { label: "Agent", field: "agentName" as keyof Client, w: "w-[150px]" },
+                  { label: "Last Ordered", field: "lastOrder" as keyof Client, w: "w-[140px]" },
                   { label: "Mobile", field: "contactNumber" as keyof Client, w: "w-[160px]" },
                   { label: "Email", field: "email" as keyof Client, w: "w-[220px]" },
                   { label: "Invoice Address", field: "address" as keyof Client, w: "w-[240px]" },
@@ -393,7 +564,7 @@ export default function ClientsPage() {
               <AnimatePresence mode="popLayout">
                 {filtered.length === 0 ? (
                   <tr key="empty">
-                    <td colSpan={5}>
+                    <td colSpan={7}>
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -408,7 +579,9 @@ export default function ClientsPage() {
                 ) : (
                   filtered.map((client, i) => {
                     const isInactive = parseDaysAgo(client.lastOrder) > INACTIVE_THRESHOLD;
-                    const st = statusConfig[client.accountStatus];
+                    const st = statusConfig[normalizeAccountStatus(client.accountStatus)];
+                    const assignedAgentName =
+                      agentNameById.get(client.agentId ?? "") || client.agentName;
                     const invoiceAddr = client.invoiceAddressFull
                       ? client.invoiceAddressFull
                       : [client.address, client.city].filter(Boolean).join(", ");
@@ -437,6 +610,24 @@ export default function ClientsPage() {
                             >
                               {st.label}
                             </Badge>
+                          </div>
+                        </td>
+
+                        {/* Assigned Agent */}
+                        <td className="px-5 py-3.5 align-middle">
+                          <div className="flex items-center gap-1.5">
+                            <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                            <p className="text-xs">{assignedAgentName || "Unassigned"}</p>
+                          </div>
+                        </td>
+
+                        {/* Last Ordered */}
+                        <td className="px-5 py-3.5 align-middle">
+                          <div className="flex items-center gap-1.5">
+                            <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                            <p className={cn("text-xs", isInactive && "font-medium text-amber-600 dark:text-amber-400")}>
+                              {client.lastOrder || "No orders yet"}
+                            </p>
                           </div>
                         </td>
 
@@ -581,4 +772,3 @@ export default function ClientsPage() {
     </div>
   );
 }
-

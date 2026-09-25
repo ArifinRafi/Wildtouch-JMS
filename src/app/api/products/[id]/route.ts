@@ -4,6 +4,7 @@ import { connectDB } from "@/lib/db";
 import { requireAdmin, isResponse } from "@/lib/authz";
 import { Product, serializeProduct } from "@/lib/models/Product";
 import { logActivity } from "@/lib/activity";
+import { productNameOnly } from "@/lib/product-title";
 
 export async function GET(
   _request: NextRequest,
@@ -31,8 +32,16 @@ export async function PATCH(
   const body = await request.json();
 
   const patch: Record<string, unknown> = {};
-  if (body.name !== undefined) patch.name = String(body.name).trim();
-  if (body.group !== undefined) patch.group = String(body.group).trim();
+  if (body.group !== undefined) {
+    const group = String(body.group).trim();
+    if (!group) return NextResponse.json({ error: "product line is required" }, { status: 400 });
+    patch.group = group;
+  }
+  if (body.name !== undefined) {
+    const name = productNameOnly(typeof patch.group === "string" ? patch.group : "", body.name);
+    if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 });
+    patch.name = name;
+  }
   if (body.segment !== undefined) patch.segment = String(body.segment).trim();
   if (body.code !== undefined) patch.code = String(body.code).trim();
   if (body.image !== undefined) patch.image = body.image ? String(body.image) : null;

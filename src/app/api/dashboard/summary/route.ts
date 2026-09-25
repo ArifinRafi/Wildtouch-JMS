@@ -5,6 +5,7 @@ import { Invoice } from "@/lib/models/Invoice";
 import { Client } from "@/lib/models/Client";
 import { Product } from "@/lib/models/Product";
 import { Component } from "@/lib/models/Component";
+import { Task } from "@/lib/models/Task";
 
 export const dynamic = "force-dynamic";
 
@@ -29,11 +30,12 @@ export async function GET() {
     recentInvoices,
     monthInvoices,
     lowStockDocs,
+    pendingTasks,
   ] = await Promise.all([
     Order.countDocuments({ status: { $nin: ["delivered", "archived"] } }),
     Order.countDocuments(),
     Order.countDocuments({ status: "in_production" }),
-    Client.countDocuments({ accountStatus: "active" }),
+    Client.countDocuments({ accountStatus: { $in: ["existing_client", "active"] } }),
     Client.countDocuments(),
     Product.countDocuments(),
     Invoice.find({ createdAt: { $gte: start7 } }, { total: 1, createdAt: 1 }).lean(),
@@ -42,6 +44,7 @@ export async function GET() {
       .sort({ qtyAvailable: 1 })
       .limit(6)
       .lean(),
+    Task.countDocuments({ status: "pending" }),
   ]);
 
   // Revenue series: last 7 days (oldest → newest)
@@ -73,5 +76,6 @@ export async function GET() {
     revenueMTD,
     revenueSeries,
     lowStock,
+    pendingTasks,
   });
 }

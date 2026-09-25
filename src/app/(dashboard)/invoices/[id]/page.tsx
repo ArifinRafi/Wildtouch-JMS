@@ -7,15 +7,40 @@ import { motion } from "framer-motion";
 import { ArrowLeft, Printer, Loader2, AlertTriangle, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { thumbUrl } from "@/lib/cloudinary";
-import { resolvePlanogramForPdf, buildPlanogramSidesHtml, type PdfPlanogram } from "@/lib/planogram-pdf";
+import {
+  resolvePlanogramForPdf,
+  buildPlanogramSidesHtml,
+  groupOrderLinesForPdf,
+  type PdfMeta,
+  type PdfPlanogram,
+} from "@/lib/planogram-pdf";
+import { formatCurrency } from "@/lib/currency";
 
-interface InvoiceLine { code: string; description: string; qty: number; unitPrice: number; lineTotal: number }
+interface InvoiceLine { code: string; description: string; category?: string; qty: number; unitPrice: number; lineTotal: number }
+interface PlanogramOrderInfo {
+  client?: Invoice["client"];
+  poNumber?: string;
+  referenceNumber?: string;
+  notes?: string;
+  createdAt?: string | null;
+}
 interface Invoice {
   id: string;
   invoiceNumber: string;
   orderId?: string | null;
   orderNumber: string;
-  client: { name?: string; email?: string; contactNumber?: string; invoiceAddress?: string; deliveryAddress?: string; clientId?: string };
+  client: {
+    name?: string;
+    contactName?: string;
+    companyName?: string;
+    email?: string;
+    contactNumber?: string;
+    invoiceAddress?: string;
+    deliveryAddress?: string;
+    clientId?: string;
+    brandCardImage?: string;
+    barcodeImage?: string;
+  };
   lineItems: InvoiceLine[];
   subtotal: number;
   shipping: number;
@@ -32,8 +57,7 @@ interface Invoice {
 }
 
 const esc = (v: string) => String(v ?? "").replace(/[&<>]/g, (m) => (m === "&" ? "&amp;" : m === "<" ? "&lt;" : "&gt;"));
-const gbp = (n: number) => `£${(Number(n) || 0).toFixed(2)}`;
-
+const escAttr = (v: string) => esc(v).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 function dateShort(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -42,11 +66,12 @@ function dateShort(iso: string | null) {
 /** The single source of truth for how an invoice looks — used both on screen (iframe) and in the printed PDF. */
 function buildInvoiceHtml(inv: Invoice): string {
   const c = inv.client || {};
+  const money = (value: number) => formatCurrency(value, inv.currency);
   const rows = inv.lineItems
     .map((l) => {
       const desc = esc(l.description || "—");
       const code = esc(l.code || "");
-      return `<tr><td><div class="desc">${desc}${code ? ` ${code}` : ""}</div>${code ? `<div class="code">${code}</div>` : ""}</td><td class="q">&times; ${l.qty}</td><td class="p">${gbp(l.unitPrice)}</td><td class="t">${gbp(l.lineTotal)}</td></tr>`;
+      return `<tr><td><div class="desc">${desc}${code ? ` ${code}` : ""}</div>${code ? `<div class="code">${code}</div>` : ""}</td><td class="q">&times; ${l.qty}</td><td class="p">${money(l.unitPrice)}</td><td class="t">${money(l.lineTotal)}</td></tr>`;
     })
     .join("");
   const tel = (n?: string) => (n ? `<div class="lines">Tel. ${esc(n)}</div>` : "");
@@ -109,18 +134,18 @@ table.items td.q,table.items td.p,table.items td.t{text-align:right;white-space:
 <hr/>
 <table class="items">
   <thead><tr><th>Item Description</th><th class="q">Qty</th><th class="p">Price</th><th class="t">Total</th></tr></thead>
-  <tbody>${rows || `<tr><td>No items</td><td class="q">0</td><td class="p">${gbp(0)}</td><td class="t">${gbp(0)}</td></tr>`}</tbody>
+  <tbody>${rows || `<tr><td>No items</td><td class="q">0</td><td class="p">${money(0)}</td><td class="t">${money(0)}</td></tr>`}</tbody>
 </table>
 <div class="totals">
-  <div class="trow"><span>Subtotal</span><span>${gbp(inv.subtotal)}</span></div>
-  <div class="trow"><span>Shipping</span><span>${gbp(inv.shipping)}</span></div>
-  <div class="trow"><span>VAT ${inv.vatRate}%</span><span>${gbp(inv.vat)}</span></div>
+  <div class="trow"><span>Subtotal</span><span>${money(inv.subtotal)}</span></div>
+  <div class="trow"><span>Shipping</span><span>${money(inv.shipping)}</span></div>
+  <div class="trow"><span>VAT ${inv.vatRate}%</span><span>${money(inv.vat)}</span></div>
   ${inv.isPartial
-    ? `<div class="trow"><span>Total incl. VAT</span><span>${gbp(inv.total)}</span></div>
-  <div class="trow"><span>Previously invoiced</span><span>&minus; ${gbp(inv.previouslyPaid ?? 0)}</span></div>
-  <div class="trow grand"><span>Amount due now</span><span>${gbp(inv.paymentAmount ?? 0)}</span></div>
-  <div class="trow balance"><span>Balance remaining</span><span>${gbp(inv.balanceDue ?? 0)}</span></div>`
-    : `<div class="trow grand"><span>Total incl. VAT</span><span>${gbp(inv.total)}</span></div>`}
+    ? `<div class="trow"><span>Total incl. VAT</span><span>${money(inv.total)}</span></div>
+  <div class="trow"><span>Previously invoiced</span><span>&minus; ${money(inv.previouslyPaid ?? 0)}</span></div>
+  <div class="trow grand"><span>Amount due now</span><span>${money(inv.paymentAmount ?? 0)}</span></div>
+  <div class="trow balance"><span>Balance remaining</span><span>${money(inv.balanceDue ?? 0)}</span></div>`
+    : `<div class="trow grand"><span>Total incl. VAT</span><span>${money(inv.total)}</span></div>`}
 </div>
 <div class="pay">
   <div class="ph">Payment Instructions:</div>
@@ -143,9 +168,15 @@ table.items td.q,table.items td.p,table.items td.t{text-align:right;white-space:
  * Printable planogram summary — same look as the invoice (brand header, client
  * addresses) but with the planogram product list only; no pricing anywhere.
  */
-function buildPlanogramHtml(inv: Invoice, planogramName: string, lines: InvoiceLine[], imageOf: (l: InvoiceLine) => string): string {
-  const c = inv.client || {};
+function buildPlanogramHtml(inv: Invoice, planogramName: string, lines: InvoiceLine[], imageOf: (l: InvoiceLine) => string, meta: PdfMeta): string {
+  const c = { ...inv.client, name: meta.clientName || inv.client?.name };
   const totalUnits = lines.reduce((s, l) => s + l.qty, 0);
+  const groupRows = (meta.orderGroups ?? [])
+    .map((group) => `<span class="group"><strong>${esc(group.name)}</strong> &times; ${group.quantity}</span>`)
+    .join("");
+  const asset = (label: string, src?: string) => `<div class="asset"><div class="lbl">${esc(label)}</div>${src
+    ? `<img src="${escAttr(src)}" alt="${escAttr(label)}"/>`
+    : `<div class="missing">Not provided</div>`}</div>`;
   const rows = lines
     .map((l, i) => {
       const img = imageOf(l);
@@ -155,7 +186,6 @@ function buildPlanogramHtml(inv: Invoice, planogramName: string, lines: InvoiceL
       return `<tr><td class="rn">${i + 1}</td><td class="ic">${imgCell}</td><td><div class="desc">${esc(l.description || "—")}</div>${l.code ? `<div class="code">${esc(l.code)}</div>` : ""}</td><td class="q">${l.qty}</td></tr>`;
     })
     .join("");
-  const tel = (n?: string) => (n ? `<div class="lines">Tel. ${esc(n)}</div>` : "");
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Planogram ${esc(planogramName || inv.orderNumber || "")}</title>
 <style>@page{size:A4;margin:0}*{box-sizing:border-box;margin:0;padding:0}
 body{font-family:"Segoe UI",Arial,sans-serif;font-size:12px;color:#1f2937;line-height:1.45;background:#f1f5f9}
@@ -174,6 +204,10 @@ body{font-family:"Segoe UI",Arial,sans-serif;font-size:12px;color:#1f2937;line-h
 .addr h4{font-size:12px;font-weight:700;margin-bottom:6px}
 .addr .nm{font-weight:600}
 .addr .lines{white-space:pre-line;color:#333}
+.details{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 14px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;padding:12px;margin:8px 0 12px}
+.detail.address{grid-column:span 2}.lbl{font-size:8px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#6b5b95;margin-bottom:2px}.val{font-size:10px;font-weight:600;overflow-wrap:anywhere}.detail.address .val{white-space:pre-line;font-weight:500}
+.assets{display:flex;gap:12px;border-top:1px solid #e2e8f0;padding-top:9px;grid-column:1/-1}.asset{flex:1}.asset img{display:block;width:100%;height:42px;object-fit:contain;object-position:left center}.missing{font-size:9px;color:#94a3b8}
+.groups{display:flex;flex-wrap:wrap;gap:4px;grid-column:1/-1;border-top:1px solid #e2e8f0;padding-top:9px}.group{font-size:9px;padding:2px 6px;border-radius:10px;background:#ede9f7;color:#3b2f6b;border:1px solid #ddd5ef}
 hr{border:none;border-top:1px solid #94a3b8;margin:14px 0}
 .plano{display:flex;justify-content:space-between;align-items:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin-bottom:4px}
 .plano .nm{font-size:15px;font-weight:800;color:#1e293b}
@@ -199,7 +233,7 @@ table.items td.ic{width:56px}
     <div class="title">Planogram</div>
     <div class="meta"><strong>Order No.</strong> ${esc(inv.orderNumber || "—")}</div>
     <div class="meta"><strong>Invoice No.</strong> #${esc(inv.invoiceNumber)}</div>
-    <div class="meta"><strong>Order Date</strong> ${dateShort(inv.createdAt)}</div>
+    <div class="meta"><strong>Order Date</strong> ${esc(meta.dateStr || dateShort(inv.createdAt))}</div>
     ${c.email ? `<div class="meta"><strong>Email</strong> ${esc(c.email)}</div>` : ""}
   </div>
   <div class="brand">
@@ -208,9 +242,17 @@ table.items td.ic{width:56px}
     <div class="sub">STERLING-K LTD</div>
   </div>
 </div>
-<div class="addr">
-  <div class="col"><h4>Bill to</h4><div class="nm">${esc(c.name || "—")}</div><div class="lines">${esc(c.invoiceAddress || "")}</div>${tel(c.contactNumber)}</div>
-  <div class="col"><h4>Ship to</h4><div class="nm">${esc(c.name || "—")}</div><div class="lines">${esc(c.deliveryAddress || c.invoiceAddress || "")}</div>${tel(c.contactNumber)}</div>
+<div class="details">
+  <div class="detail"><div class="lbl">Client Name</div><div class="val">${esc(meta.clientName || "—")}</div></div>
+  <div class="detail"><div class="lbl">Contact Name</div><div class="val">${esc(meta.contactName || "—")}</div></div>
+  <div class="detail"><div class="lbl">Company Name</div><div class="val">${esc(meta.companyName || meta.clientName || "—")}</div></div>
+  <div class="detail"><div class="lbl">Tel</div><div class="val">${esc(meta.telephone || "—")}</div></div>
+  <div class="detail address"><div class="lbl">Address</div><div class="val">${esc(meta.address || "—")}</div></div>
+  <div class="detail"><div class="lbl">Email</div><div class="val">${esc(meta.email || "—")}</div></div>
+  <div class="detail"><div class="lbl">PO Number</div><div class="val">${esc(meta.poNumber || "—")}</div></div>
+  <div class="detail"><div class="lbl">Reference Number</div><div class="val">${esc(meta.referenceNumber || "—")}</div></div>
+  <div class="assets">${asset("Branding Card", meta.brandCardImage)}${asset("Barcode", meta.barcodeImage)}</div>
+  <div class="groups">${groupRows || '<span class="missing">No order groups recorded</span>'}</div>
 </div>
 <hr/>
 <div class="plano"><span class="nm">${esc(planogramName || "—")}</span><span class="units">${totalUnits} units</span></div>
@@ -234,6 +276,7 @@ export default function InvoiceViewPage() {
   const { id } = useParams<{ id: string }>();
   const [inv, setInv] = useState<Invoice | null>(null);
   const [planogramName, setPlanogramName] = useState("");
+  const [planogramOrderInfo, setPlanogramOrderInfo] = useState<PlanogramOrderInfo | null>(null);
   // Product-level lines from the linked ORDER — the invoice's own lines are
   // category-level, so the planogram panel/PDF read products from the order.
   const [orderLines, setOrderLines] = useState<InvoiceLine[]>([]);
@@ -259,15 +302,50 @@ export default function InvoiceViewPage() {
             if (or.ok) {
               const order = await or.json();
               if (on) {
+                setPlanogramOrderInfo({
+                  client: order?.client,
+                  poNumber: order?.poNumber ?? "",
+                  referenceNumber: order?.referenceNumber ?? "",
+                  notes: order?.notes ?? "",
+                  createdAt: order?.createdAt ?? null,
+                });
+                const clientId = order?.client?.clientId;
+                if (clientId) {
+                  fetch(`/api/clients/${clientId}`)
+                    .then((response) => (response.ok ? response.json() : null))
+                    .then((client) => {
+                      if (!on || !client) return;
+                      setPlanogramOrderInfo((current) => {
+                        const saved = current?.client ?? order?.client ?? {};
+                        return {
+                          ...(current ?? {}),
+                          client: {
+                            ...saved,
+                            name: saved.name || client.name || "",
+                            contactName: saved.contactName || client.primaryContactName || client.mainBuyerNames || client.otherContactAndPosition || "",
+                            companyName: saved.companyName || client.motherCompany || client.name || "",
+                            email: saved.email || client.email || "",
+                            contactNumber: saved.contactNumber || client.contactNumber || "",
+                            invoiceAddress: saved.invoiceAddress || client.invoiceAddressFull || [client.address, client.city, client.region, client.postcode].filter(Boolean).join(", "),
+                            deliveryAddress: saved.deliveryAddress || client.deliveryAddress || "",
+                            brandCardImage: saved.brandCardImage || client.brandCardImage || "",
+                            barcodeImage: saved.barcodeImage || client.barcodeImage || "",
+                          },
+                        };
+                      });
+                    })
+                    .catch(() => {});
+                }
                 setPlanogramName(order?.planogram?.name ?? "");
                 // Resolve the full planogram (sides/rows/cells) for the per-side PDF.
                 resolvePlanogramForPdf(order?.planogram?.id)
                   .then((pg) => { if (on) setSidesPg(pg); })
                   .catch(() => {});
                 const lines = Array.isArray(order?.lineItems) ? order.lineItems : [];
-                setOrderLines(lines.map((l: { code?: string; description?: string; qtyOrdered?: number; unitPrice?: number; lineTotal?: number }) => ({
+                setOrderLines(lines.map((l: { code?: string; description?: string; category?: string; qtyOrdered?: number; unitPrice?: number; lineTotal?: number }) => ({
                   code: l.code ?? "",
                   description: l.description ?? "",
+                  category: l.category ?? "",
                   qty: l.qtyOrdered ?? 0,
                   unitPrice: l.unitPrice ?? 0,
                   lineTotal: l.lineTotal ?? 0,
@@ -325,21 +403,34 @@ export default function InvoiceViewPage() {
     if (!win) return;
     // Preferred: one page per planogram side + a totals page. Falls back to the
     // flat product list when the planogram structure can't be resolved.
+    const pdfClient = planogramOrderInfo?.client ?? inv.client ?? {};
+    const pdfMeta: PdfMeta = {
+      orderNumber: inv.orderNumber,
+      invoiceNumber: inv.invoiceNumber,
+      dateStr: dateShort(planogramOrderInfo?.createdAt ?? inv.createdAt),
+      clientName: pdfClient.name ?? "",
+      contactName: pdfClient.contactName ?? "",
+      companyName: pdfClient.companyName ?? pdfClient.name ?? "",
+      address: pdfClient.invoiceAddress ?? pdfClient.deliveryAddress ?? "",
+      telephone: pdfClient.contactNumber ?? "",
+      email: pdfClient.email ?? "",
+      poNumber: planogramOrderInfo?.poNumber ?? "",
+      referenceNumber: planogramOrderInfo?.referenceNumber ?? "",
+      additionalInformation: planogramOrderInfo?.notes ?? "",
+      brandCardImage: pdfClient.brandCardImage ?? "",
+      barcodeImage: pdfClient.barcodeImage ?? "",
+      orderGroups: groupOrderLinesForPdf(panelLines),
+    };
     const html = sidesPg
       ? buildPlanogramSidesHtml(
-          {
-            orderNumber: inv.orderNumber,
-            invoiceNumber: inv.invoiceNumber,
-            dateStr: dateShort(inv.createdAt),
-            clientName: inv.client?.name ?? "",
-          },
+          pdfMeta,
           sidesPg,
           (product) => {
             const url = productImages[`name:${product.toLowerCase()}`] ?? "";
             return url ? thumbUrl(url, 96) : "";
           },
         )
-      : buildPlanogramHtml(inv, planogramName, panelLines, imageOf);
+      : buildPlanogramHtml(inv, planogramName, panelLines, imageOf, pdfMeta);
     // The generated HTML self-prints on load (after its product images finish loading).
     win.document.write(html);
     win.document.close();

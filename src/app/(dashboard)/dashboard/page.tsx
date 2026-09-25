@@ -3,18 +3,13 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import {
-  ShoppingCart,
-  Users,
-  Package,
-  PoundSterling,
-  Plus,
-} from "lucide-react";
+import { ListChecks, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { StatCard } from "@/components/dashboard/stat-card";
 import { OrdersToday } from "@/components/dashboard/orders-today";
 import { StockAlerts, type StockAlertItem } from "@/components/dashboard/stock-alerts";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
+import { useRole } from "@/lib/hooks/use-role";
+import DigitalWhiteboardPage from "../digital-whiteboard/page";
 
 interface DashboardSummary {
   activeOrders: number;
@@ -26,6 +21,7 @@ interface DashboardSummary {
   revenueMTD: number;
   revenueSeries: number[];
   lowStock: StockAlertItem[];
+  pendingTasks: number;
 }
 
 const EMPTY: DashboardSummary = {
@@ -38,10 +34,12 @@ const EMPTY: DashboardSummary = {
   revenueMTD: 0,
   revenueSeries: [0, 0, 0, 0, 0, 0, 0],
   lowStock: [],
+  pendingTasks: 0,
 };
 
 export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary>(EMPTY);
+  const { isAdmin } = useRole();
 
   useEffect(() => {
     let active = true;
@@ -85,39 +83,31 @@ export default function DashboardPage() {
         </motion.div>
       </motion.div>
 
-      {/* KPI Summary Cards */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Active Orders"
-          value={summary.activeOrders}
-          icon={ShoppingCart}
-          description={`${summary.totalOrders} total`}
-          index={0}
-        />
-        <StatCard
-          title="Active Clients"
-          value={summary.activeClients}
-          icon={Users}
-          description={`${summary.totalClients} registered`}
-          index={1}
-        />
-        <StatCard
-          title="Products"
-          value={summary.totalProducts}
-          icon={Package}
-          description="in catalog"
-          index={2}
-        />
-        <StatCard
-          title="Revenue (MTD)"
-          value={`£${summary.revenueMTD.toLocaleString()}`}
-          icon={PoundSterling}
-          index={3}
-        />
-      </div>
+      {/* The live Digital Whiteboard is the dashboard's primary workspace. */}
+      <DigitalWhiteboardPage />
 
-      {/* Revenue Chart — Last 7 Days */}
-      <RevenueChart series={summary.revenueSeries} />
+      {/* Total pending tasks across every date and employee. */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="flex w-full max-w-sm items-center justify-between rounded-2xl border border-amber-500/25 bg-card/70 p-5 glass shadow-sm"
+      >
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Pending Tasks
+          </p>
+          <p className="mt-2 text-4xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
+            {summary.pendingTasks}
+          </p>
+        </div>
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+          <ListChecks className="h-6 w-6" />
+        </div>
+      </motion.div>
+
+      {/* Revenue is financial information and is visible to admins only. */}
+      {isAdmin && <RevenueChart series={summary.revenueSeries} />}
 
       {/* Orders pipeline */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">

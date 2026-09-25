@@ -1,4 +1,5 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
+import { inferProductLine } from "@/lib/product-title";
 
 /**
  * A planogram product — the sellable design (e.g. "Elephant Grey" keyring).
@@ -52,7 +53,7 @@ export function serializeProduct(doc: {
   return {
     id: String(doc._id),
     name: doc.name,
-    group: doc.group ?? "",
+    group: inferProductLine(doc.group, doc.planogramId, doc.segment),
     planogramId: doc.planogramId,
     planogramName: doc.planogramName ?? "",
     segment: doc.segment ?? "",

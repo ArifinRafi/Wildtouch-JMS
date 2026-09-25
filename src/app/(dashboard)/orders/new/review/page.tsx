@@ -10,6 +10,9 @@ import {
   MapPin,
   Package,
   AlertTriangle,
+  ContactRound,
+  CalendarClock,
+  RadioTower,
 } from "lucide-react";
 import { StepNav } from "@/components/orders/step-nav";
 import { useOrderDraft } from "@/lib/store/order-draft";
@@ -17,6 +20,8 @@ import { useOrders } from "@/lib/store/orders-store";
 import { useAppStore } from "@/lib/store/app-store";
 import { useProducts } from "@/lib/hooks/use-products";
 import { buildCategoryLookup, priceLinesByCategory, groupIntoCategoryLines } from "@/lib/invoicing";
+import { formatCurrency, normalizeCurrency } from "@/lib/currency";
+import { orderSourceLabel } from "@/lib/order-source";
 
 export default function ReviewStepPage() {
   const router = useRouter();
@@ -25,23 +30,25 @@ export default function ReviewStepPage() {
   const { clients } = useAppStore();
   const { products } = useProducts();
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const lineItems = draft.lineItems ?? [];
   const totalUnits = lineItems.reduce((s, li) => s + li.qtyOrdered, 0);
-  const ready = !!draft.planogram && lineItems.length > 0 && !!draft.client?.clientId;
+  const ready = !!draft.planogram && lineItems.length > 0 && !!draft.client?.clientId && !!draft.orderSource && (!draft.isBackOrder || !!draft.backOrderDate);
 
   // Invoice preview — each product is priced from the CLIENT's price for the
   // product's CATEGORY (group), then grouped so the invoice shows one line per
   // category. Mirrors what the confirm API does server-side.
   const round2 = (n: number) => Math.round(n * 100) / 100;
   const liveClient = clients.find((c) => c.id === draft.client?.clientId);
+  const currency = normalizeCurrency(liveClient?.pricingCurrency);
   const vatRate = liveClient?.vatRate ?? draft.client?.vatRate ?? 0;
   const pricedLines = priceLinesByCategory(lineItems, buildCategoryLookup(products), liveClient?.categoryPrices ?? {});
   const categoryLines = groupIntoCategoryLines(pricedLines);
   const subtotal = round2(pricedLines.reduce((s, li) => s + li.lineTotal, 0));
   const vat = round2((subtotal * vatRate) / 100);
   const grandTotal = round2(subtotal + vat);
-  const gbp = (n: number) => `£${n.toFixed(2)}`;
+  const money = (n: number) => formatCurrency(n, currency);
 
   const confirm = async (): Promise<boolean> => {
     if (!ready) {
@@ -49,8 +56,9 @@ export default function ReviewStepPage() {
       return false;
     }
     setError("");
+    setSubmitting(true);
     try {
-      const res = await fetch("/api/orders/confirm", {
+      const res = await fetch(draft.isBackOrder ? "/api/back-orders" : "/api/orders/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -58,20 +66,32 @@ export default function ReviewStepPage() {
           lineItems: draft.lineItems,
           componentRequirements: draft.componentRequirements,
           client: draft.client,
+          agent: draft.agent,
+          orderSource: draft.orderSource,
+          poNumber: draft.poNumber,
+          referenceNumber: draft.referenceNumber,
           notes: draft.notes,
+          deliveryDate: draft.backOrderDate,
         }),
       });
-      if (!res.ok) throw new Error("confirm failed");
-      const { invoice } = await res.json();
+      const response = await res.json();
+      if (!res.ok) throw new Error(response.error || "confirm failed");
       reset();
+      if (draft.isBackOrder) {
+        window.dispatchEvent(new Event("back-orders-changed"));
+        router.push("/back-orders");
+        return true;
+      }
       // Pull the fresh order list into the shared store so the Orders page
       // shows the new order immediately — no manual page refresh needed.
       refreshOrders().catch(() => {});
-      router.push(`/invoices/${invoice.id}`);
+      router.push(`/invoices/${response.invoice.id}`);
       return true;
-    } catch {
-      setError("Could not confirm the order. Please try again.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not confirm the order. Please try again.");
       return false;
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -81,7 +101,7 @@ export default function ReviewStepPage() {
         <div className="rounded-2xl border border-border/40 bg-card/70 glass p-10 text-center">
           <AlertTriangle className="h-8 w-8 text-amber-500/60 mx-auto mb-3" />
           <p className="text-sm font-medium">This order isn&rsquo;t complete yet.</p>
-          <p className="text-xs text-muted-foreground mt-1">Go back and make sure a planogram, products and a client are selected.</p>
+          <p className="text-xs text-muted-foreground mt-1">Go back and make sure a planogram, products, client and source of order are selected.</p>
         </div>
         <StepNav backHref="/orders/new/client" nextDisabled isLast nextLabel="Confirm Order" />
       </div>
@@ -96,7 +116,17 @@ export default function ReviewStepPage() {
         <p className="text-sm text-destructive bg-destructive/10 rounded-xl px-4 py-2.5 border border-destructive/20 font-medium">{error}</p>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {draft.isBackOrder && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-amber-900 dark:text-amber-100">
+          <CalendarClock className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold">Back order scheduled for {new Date(`${draft.backOrderDate}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
+            <p className="mt-1 text-xs opacity-80">No inventory availability check will run now. Pricing and the invoice will be created when this back order is marked delivered.</p>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* Planogram + client cards */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
           className="rounded-2xl border border-border/40 bg-card/70 glass p-5">
@@ -118,6 +148,29 @@ export default function ReviewStepPage() {
           <div className="flex items-center gap-2 mb-3"><MapPin className="h-4 w-4 text-primary" /><h3 className="text-sm font-semibold">Delivery</h3></div>
           <p className="text-[11px] text-muted-foreground whitespace-pre-line">{c.deliveryAddress || c.invoiceAddress || "—"}</p>
         </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15 }}
+          className="rounded-2xl border border-border/40 bg-card/70 glass p-5">
+          <div className="flex items-center gap-2 mb-3"><ContactRound className="h-4 w-4 text-primary" /><h3 className="text-sm font-semibold">Agent</h3></div>
+          <p className="text-sm font-medium">{draft.agent?.name || "Not assigned"}</p>
+          {draft.agent?.agentId && <p className="text-[11px] font-mono text-muted-foreground mt-1">{draft.agent.agentId}</p>}
+          {draft.agent?.email && <p className="text-[11px] text-muted-foreground truncate">{draft.agent.email}</p>}
+        </motion.div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 rounded-2xl border border-border/40 bg-card/70 p-4 sm:grid-cols-3">
+        <div>
+          <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"><RadioTower className="h-3 w-3" /> Source of Order</p>
+          <p className="mt-1 text-sm font-medium">{orderSourceLabel(draft.orderSource)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">PO Number</p>
+          <p className="mt-1 text-sm font-medium">{draft.poNumber || "Not provided"}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Reference Number</p>
+          <p className="mt-1 text-sm font-medium">{draft.referenceNumber || "Not provided"}</p>
+        </div>
       </div>
 
       {/* Line items */}
@@ -177,27 +230,31 @@ export default function ReviewStepPage() {
                 <tr key={i} className="border-b border-border/15 last:border-b-0">
                   <td className="px-4 py-2 text-sm font-medium">{l.description}</td>
                   <td className="px-4 py-2 text-right text-sm tabular-nums">{l.qty}</td>
-                  <td className="px-4 py-2 text-right text-sm tabular-nums">{gbp(l.unitPrice)}</td>
-                  <td className="px-4 py-2 text-right text-sm tabular-nums font-semibold">{gbp(l.lineTotal)}</td>
+                  <td className="px-4 py-2 text-right text-sm tabular-nums">{money(l.unitPrice)}</td>
+                  <td className="px-4 py-2 text-right text-sm tabular-nums font-semibold">{money(l.lineTotal)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <div className="rounded-xl border border-border/30 bg-muted/10 p-3 text-sm max-w-sm ml-auto">
-          <div className="flex justify-between py-0.5"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums font-medium">{gbp(subtotal)}</span></div>
-          <div className="flex justify-between py-0.5"><span className="text-muted-foreground">VAT ({vatRate}%)</span><span className="tabular-nums font-medium">{gbp(vat)}</span></div>
-          <div className="flex justify-between py-1 mt-1 border-t border-border/30 font-bold"><span>Total incl. VAT</span><span className="tabular-nums text-primary">{gbp(grandTotal)}</span></div>
+          <div className="flex justify-between py-0.5"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums font-medium">{money(subtotal)}</span></div>
+          <div className="flex justify-between py-0.5"><span className="text-muted-foreground">VAT ({vatRate}%)</span><span className="tabular-nums font-medium">{money(vat)}</span></div>
+          <div className="flex justify-between py-1 mt-1 border-t border-border/30 font-bold"><span>Total incl. VAT</span><span className="tabular-nums text-primary">{money(grandTotal)}</span></div>
         </div>
         <p className="text-[11px] text-muted-foreground mt-3">
           Prices come from this client&rsquo;s <span className="font-semibold">Category Pricing</span> (client profile → Category Pricing);
-          VAT rate <span className="font-semibold">{vatRate}%</span> is also set per client. Categories priced at £0 have no price set for this client.
+          VAT rate <span className="font-semibold">{vatRate}%</span> is also set per client. Categories priced at {money(0)} have no price set for this client.
         </p>
       </motion.div>
 
-      <p className="text-[11px] text-muted-foreground">Confirming creates the order and generates an invoice for this client.</p>
+      <p className="text-[11px] text-muted-foreground">
+        {draft.isBackOrder
+          ? "Creating this back order schedules it without reserving or checking stock. The displayed amount is a preview and will be recalculated when delivered."
+          : "Confirming creates the order and generates an invoice for this client."}
+      </p>
 
-      <StepNav backHref="/orders/new/client" isLast nextLabel="Confirm Order" onNext={confirm} />
+      <StepNav backHref="/orders/new/client" isLast nextLabel={draft.isBackOrder ? "Create Back Order" : "Confirm Order"} onNext={confirm} busy={submitting} />
     </div>
   );
 }

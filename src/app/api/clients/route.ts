@@ -2,6 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Client, nextClientId, serializeClient } from "@/lib/models/Client";
 import { logActivity } from "@/lib/activity";
+import { requireAdmin, isResponse } from "@/lib/authz";
+import { normalizeCurrency } from "@/lib/currency";
+import { normalizeAccountStatus } from "@/lib/client-status";
 
 export async function GET() {
   await connectDB();
@@ -13,6 +16,11 @@ export async function POST(request: NextRequest) {
   await connectDB();
   const body = await request.json();
 
+  if ("categoryPrices" in body || "pricingCurrency" in body) {
+    const gate = await requireAdmin();
+    if (isResponse(gate)) return gate;
+  }
+
   const name = String(body.name ?? "").trim();
   if (!name) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
@@ -21,6 +29,8 @@ export async function POST(request: NextRequest) {
   // Ignore any client-supplied id; always assign the next sequential one.
   const { id: _ignore, ...rest } = body;
   void _ignore;
+  if ("pricingCurrency" in rest) rest.pricingCurrency = normalizeCurrency(rest.pricingCurrency);
+  rest.accountStatus = normalizeAccountStatus(rest.accountStatus);
   const _id = await nextClientId();
 
   const created = await Client.create({ _id, ...rest, name });

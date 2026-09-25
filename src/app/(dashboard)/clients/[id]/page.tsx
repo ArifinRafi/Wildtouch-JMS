@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -9,14 +9,12 @@ import {
   Pencil,
   Trash2,
   Phone,
-  Mail,
   MapPin,
   FileText,
   PackageCheck,
-  PoundSterling,
+  Coins,
   Store,
   UserCheck,
-  Globe,
   Save,
   X,
   Plus,
@@ -25,6 +23,7 @@ import {
   ScanLine,
   Users as UsersIcon,
   Loader2,
+  Download,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -43,35 +42,55 @@ import { CategoryPriceEditor } from "@/components/clients/category-price-editor"
 import { uploadImage } from "@/lib/cloudinary";
 import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { useAppStore } from "@/lib/store/app-store";
-import type { Client, AdditionalContact } from "@/lib/store/app-store";
-import { type AccountStatus } from "@/lib/mock-data/clients";
+import type { Client, AdditionalContact, ClientIssue, ClientNote } from "@/lib/store/app-store";
+import {
+  ACCOUNT_STATUS_OPTIONS,
+  normalizeAccountStatus,
+  type AccountStatus,
+} from "@/lib/client-status";
+import { useRole } from "@/lib/hooks/use-role";
+import { useAgents } from "@/lib/hooks/use-agents";
+import { currencySymbol, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
 
 // ─── Status config ──────────────────────────────────────────────────────────
 const statusConfig: Record<AccountStatus, { label: string; className: string }> = {
-  active: {
-    label: "Active",
-    className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-  },
-  proforma: {
-    label: "Proforma",
+  new_client: {
+    label: "New Client",
     className: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
   },
-  on_hold: {
-    label: "On Hold",
+  potential_client: {
+    label: "Potential Client",
+    className: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20",
+  },
+  previous_client: {
+    label: "Previous Client",
     className: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
   },
-  bad_credit: {
-    label: "Bad Credit",
-    className: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
+  existing_client: {
+    label: "Existing Client",
+    className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
   },
 };
+
+function formatClientIssueDate(date: string): string {
+  if (!date) return "No date";
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return parsed.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
 
 // ─── Form types ─────────────────────────────────────────────────────────────
 interface ClientForm {
   name: string;
   motherCompany: string;
+  companyNumber: string;
+  agentId: string;
   mainBuyerNames: string;
-  otherContactAndPosition: string;
+  primaryContactName: string;
+  primaryContactPosition: string;
+  furtherContactName: string;
+  furtherContactPosition: string;
+  furtherContactNumber: string;
   contactNumber: string;
   mobOther: string;
   email: string;
@@ -83,6 +102,8 @@ interface ClientForm {
   accountStatus: string;
   address: string;
   city: string;
+  postcode: string;
+  region: string;
   invoiceAddressFull: string;
   deliveryAddress: string;
   deliveryInstructions: string;
@@ -93,11 +114,15 @@ interface ClientForm {
   topSellingAnimals: string;
   slowSellerDesigns: string;
   substituteDesigns: boolean;
+  substituteDesignNotes: string;
+  complaintsIssues: ClientIssue[];
+  clientNotes: ClientNote[];
   standsInfo: string;
   upsellInfo: string;
   cardsUsed: string;
   boxesUsed: string;
   specialInformation: string;
+  pricingCurrency: SupportedCurrency;
   categoryPrices: Record<string, string>;
   additionalContacts: AdditionalContact[];
   brandCardImage: string;
@@ -114,8 +139,14 @@ function clientToForm(c: Client): ClientForm {
   return {
     name: c.name,
     motherCompany: c.motherCompany ?? "",
+    companyNumber: c.companyNumber ?? "",
+    agentId: c.agentId ?? "",
     mainBuyerNames: c.mainBuyerNames ?? "",
-    otherContactAndPosition: c.otherContactAndPosition ?? "",
+    primaryContactName: c.primaryContactName || c.otherContactAndPosition || "",
+    primaryContactPosition: c.primaryContactPosition ?? "",
+    furtherContactName: c.furtherContactName ?? "",
+    furtherContactPosition: c.furtherContactPosition ?? "",
+    furtherContactNumber: c.furtherContactNumber ?? "",
     contactNumber: c.contactNumber,
     mobOther: c.mobOther ?? "",
     email: c.email,
@@ -124,9 +155,11 @@ function clientToForm(c: Client): ClientForm {
     giftShopContactNo: c.giftShopContactNo ?? "",
     webAddress: c.webAddress ?? "",
     history: c.history,
-    accountStatus: c.accountStatus,
+    accountStatus: normalizeAccountStatus(c.accountStatus),
     address: c.address,
     city: c.city,
+    postcode: c.postcode ?? "",
+    region: c.region ?? "",
     invoiceAddressFull: c.invoiceAddressFull ?? "",
     deliveryAddress: c.deliveryAddress ?? "",
     deliveryInstructions: c.deliveryInstructions ?? "",
@@ -137,11 +170,15 @@ function clientToForm(c: Client): ClientForm {
     topSellingAnimals: c.topSellingAnimals ?? "",
     slowSellerDesigns: c.slowSellerDesigns ?? "",
     substituteDesigns: c.substituteDesigns ?? false,
+    substituteDesignNotes: c.substituteDesignNotes ?? "",
+    complaintsIssues: c.complaintsIssues ?? [],
+    clientNotes: c.clientNotes ?? [],
     standsInfo: c.standsInfo ?? "",
     upsellInfo: c.upsellInfo ?? "",
     cardsUsed: c.cardsUsed ?? "",
     boxesUsed: c.boxesUsed ?? "",
     specialInformation: c.specialInformation ?? "",
+    pricingCurrency: normalizeCurrency(c.pricingCurrency),
     categoryPrices,
     additionalContacts: c.additionalContacts ?? [],
     brandCardImage: c.brandCardImage ?? "",
@@ -157,6 +194,8 @@ export default function ClientDetailPage() {
 
   const store = useAppStore();
   const client = store.clients.find((c) => c.id === id);
+  const { isAdmin } = useRole();
+  const { agents } = useAgents();
 
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [form, setForm] = useState<ClientForm>(() =>
@@ -224,6 +263,57 @@ export default function ClientDetailPage() {
     [],
   );
 
+  // ── Dated complaints and issues ──
+  const addComplaintIssue = useCallback(() => {
+    setForm((prev) => ({
+      ...prev,
+      complaintsIssues: [
+        ...prev.complaintsIssues,
+        { date: new Date().toISOString().slice(0, 10), type: "complaint", note: "" },
+      ],
+    }));
+  }, []);
+  const removeComplaintIssue = useCallback((idx: number) => {
+    setForm((prev) => ({
+      ...prev,
+      complaintsIssues: prev.complaintsIssues.filter((_, i) => i !== idx),
+    }));
+  }, []);
+  const updateComplaintIssue = useCallback(
+    (idx: number, key: keyof ClientIssue, value: string) => {
+      setForm((prev) => ({
+        ...prev,
+        complaintsIssues: prev.complaintsIssues.map((item, i) =>
+          i === idx ? { ...item, [key]: value } as ClientIssue : item,
+        ),
+      }));
+    },
+    [],
+  );
+
+  // ── General client notes with an automatic date stamp ──
+  const addClientNote = useCallback(() => {
+    setForm((prev) => ({
+      ...prev,
+      clientNotes: [
+        ...prev.clientNotes,
+        { date: new Date().toISOString().slice(0, 10), note: "" },
+      ],
+    }));
+  }, []);
+  const removeClientNote = useCallback((idx: number) => {
+    setForm((prev) => ({
+      ...prev,
+      clientNotes: prev.clientNotes.filter((_, i) => i !== idx),
+    }));
+  }, []);
+  const updateClientNote = useCallback((idx: number, note: string) => {
+    setForm((prev) => ({
+      ...prev,
+      clientNotes: prev.clientNotes.map((item, i) => (i === idx ? { ...item, note } : item)),
+    }));
+  }, []);
+
   // ── Image uploads (Cloudinary) ──
   const handleImageUpload = useCallback(
     async (key: "brandCardImage" | "barcodeImage", file: File | null) => {
@@ -253,7 +343,7 @@ export default function ClientDetailPage() {
     }
     setFormError("");
 
-    // Per-category prices (product group → £) — drives category-level invoicing.
+    // Per-category prices (product group → selected client currency) drive invoicing.
     const categoryPricesObj: Record<string, number> = {};
     for (const [cat, raw] of Object.entries(form.categoryPrices)) {
       if (raw && raw.trim()) {
@@ -269,22 +359,42 @@ export default function ClientDetailPage() {
         address: c.address?.trim() || "",
       }))
       .filter((c) => c.name || c.contactNumber || c.address);
+    const cleanedComplaintsIssues = form.complaintsIssues
+      .map((item) => ({
+        date: item.date.trim(),
+        type: item.type,
+        note: item.note.trim(),
+      }))
+      .filter((item) => item.date || item.note);
+    const cleanedClientNotes = form.clientNotes
+      .map((item) => ({ date: item.date.trim(), note: item.note.trim() }))
+      .filter((item) => item.note);
+    const selectedAgent = agents.find((agent) => agent.id === form.agentId);
 
     const data: Partial<Omit<Client, "id">> = {
       name: form.name.trim(),
       address: form.address.trim(),
       city: form.city.trim(),
+      postcode: form.postcode.trim(),
+      region: form.region.trim(),
       contactNumber: form.contactNumber.trim(),
       email: form.email.trim(),
       history: (form.history as "good" | "bad") || "good",
-      accountStatus: (form.accountStatus as AccountStatus) || "active",
-      motherCompany: form.motherCompany.trim() || undefined,
+      accountStatus: (form.accountStatus as AccountStatus) || "new_client",
+      motherCompany: form.motherCompany.trim(),
+      companyNumber: form.companyNumber.trim(),
+      agentId: selectedAgent?.id ?? "",
+      agentName: selectedAgent?.name ?? "",
       additionalContacts:
         cleanedAdditionalContacts.length > 0 ? cleanedAdditionalContacts : undefined,
       brandCardImage: form.brandCardImage || undefined,
       barcodeImage: form.barcodeImage || undefined,
       mainBuyerNames: form.mainBuyerNames.trim() || undefined,
-      otherContactAndPosition: form.otherContactAndPosition.trim() || undefined,
+      primaryContactName: form.primaryContactName.trim() || undefined,
+      primaryContactPosition: form.primaryContactPosition.trim() || undefined,
+      furtherContactName: form.furtherContactName.trim() || undefined,
+      furtherContactPosition: form.furtherContactPosition.trim() || undefined,
+      furtherContactNumber: form.furtherContactNumber.trim() || undefined,
       mobOther: form.mobOther.trim() || undefined,
       emailOther: form.emailOther.trim() || undefined,
       shopManagerName: form.shopManagerName.trim() || undefined,
@@ -300,17 +410,25 @@ export default function ClientDetailPage() {
       topSellingAnimals: form.topSellingAnimals.trim() || undefined,
       slowSellerDesigns: form.slowSellerDesigns.trim() || undefined,
       substituteDesigns: form.substituteDesigns,
+      substituteDesignNotes: form.substituteDesignNotes.trim(),
+      complaintsIssues: cleanedComplaintsIssues,
+      clientNotes: cleanedClientNotes,
       standsInfo: form.standsInfo.trim() || undefined,
       upsellInfo: form.upsellInfo.trim() || undefined,
       cardsUsed: form.cardsUsed.trim() || undefined,
       boxesUsed: form.boxesUsed.trim() || undefined,
-      categoryPrices: categoryPricesObj,
+      ...(isAdmin
+        ? {
+            pricingCurrency: form.pricingCurrency,
+            categoryPrices: categoryPricesObj,
+          }
+        : {}),
       specialInformation: form.specialInformation.trim() || undefined,
     };
 
     store.updateClient(id, data);
     setMode("view");
-  }, [form, id, store]);
+  }, [agents, form, id, isAdmin, store]);
 
   // ── Delete ──
   const handleDelete = useCallback(() => {
@@ -347,7 +465,11 @@ export default function ClientDetailPage() {
     );
   }
 
-  const st = statusConfig[client.accountStatus];
+  const st = statusConfig[normalizeAccountStatus(client.accountStatus)];
+  const assignedAgentName =
+    agents.find((agent) => agent.id === client.agentId)?.name || client.agentName;
+  const pricingCurrency = normalizeCurrency(client.pricingCurrency);
+  const pricingSymbol = currencySymbol(pricingCurrency);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // VIEW MODE
@@ -392,6 +514,14 @@ export default function ClientDetailPage() {
               </div>
             </div>
           </div>
+          {isAdmin && (
+            <Link href={`/api/clients/export?id=${encodeURIComponent(client.id)}`}>
+              <Button variant="outline" className="gap-2 rounded-xl border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/15">
+                <Download className="h-4 w-4" />
+                Download Excel
+              </Button>
+            </Link>
+          )}
         </div>
 
         {/* ── Sections ── */}
@@ -401,8 +531,14 @@ export default function ClientDetailPage() {
             <ViewGrid>
               <ViewField label="Client Name" value={client.name} />
               <ViewField label="Mother Company" value={client.motherCompany} />
+              <ViewField label="Company Number" value={client.companyNumber} />
+              <ViewField label="Agent Name" value={assignedAgentName} />
               <ViewField label="Main Buyer" value={client.mainBuyerNames} />
-              <ViewField label="Other Contact" value={client.otherContactAndPosition} />
+              <ViewField label="Primary Contact" value={client.primaryContactName || client.otherContactAndPosition} />
+              <ViewField label="Primary Contact Position" value={client.primaryContactPosition} />
+              <ViewField label="Further Contact Name" value={client.furtherContactName} />
+              <ViewField label="Further Contact Position" value={client.furtherContactPosition} />
+              <ViewField label="Further Contact Number" value={client.furtherContactNumber} />
               <ViewField label="Mob" value={client.contactNumber} />
               <ViewField label="Mob Other" value={client.mobOther} />
               <ViewField label="Email" value={client.email} />
@@ -414,13 +550,15 @@ export default function ClientDetailPage() {
           </ViewSection>
 
           {/* Addresses */}
-          {(client.address || client.city || client.invoiceAddressFull || client.deliveryAddress || client.deliveryInstructions) && (
+          {(client.address || client.city || client.postcode || client.region || client.invoiceAddressFull || client.deliveryAddress || client.deliveryInstructions) && (
             <ViewSection title="Addresses" icon={<MapPin className="h-4 w-4" />}>
               <ViewGrid>
                 <ViewField
                   label="Invoice Address"
                   value={[client.address, client.city].filter(Boolean).join(", ") || undefined}
                 />
+                <ViewField label="Postcode" value={client.postcode} />
+                <ViewField label="Region" value={client.region} />
                 <ViewField label="Full Invoice Address" value={client.invoiceAddressFull} />
                 <ViewField label="Delivery Address" value={client.deliveryAddress} />
                 <ViewField label="Delivery Instructions" value={client.deliveryInstructions} />
@@ -441,7 +579,7 @@ export default function ClientDetailPage() {
           )}
 
           {/* Product Preferences */}
-          {(client.topSellingAnimals || client.slowSellerDesigns || client.substituteDesigns !== undefined || client.standsInfo || client.upsellInfo || client.cardsUsed || client.boxesUsed) && (
+          {(client.topSellingAnimals || client.slowSellerDesigns || client.substituteDesigns !== undefined || client.substituteDesignNotes || client.standsInfo || client.upsellInfo || client.cardsUsed || client.boxesUsed) && (
             <ViewSection title="Product Preferences" icon={<PackageCheck className="h-4 w-4" />}>
               <ViewGrid>
                 <ViewField label="Top Selling Animals" value={client.topSellingAnimals} />
@@ -450,6 +588,7 @@ export default function ClientDetailPage() {
                   label="Substitute Designs"
                   value={client.substituteDesigns !== undefined ? (client.substituteDesigns ? "Yes" : "No") : undefined}
                 />
+                <ViewField label="Substitute Design Notes" value={client.substituteDesignNotes} />
                 <ViewField label="Stands Info" value={client.standsInfo} />
                 <ViewField label="Upsell Info" value={client.upsellInfo} />
                 <ViewField label="Cards Used" value={client.cardsUsed} />
@@ -458,14 +597,51 @@ export default function ClientDetailPage() {
             </ViewSection>
           )}
 
+          {/* Dated complaints and issues — styled like Design Tracker history cards. */}
+          {client.complaintsIssues && client.complaintsIssues.length > 0 && (
+            <ViewSection title="Complaints &amp; Issues" icon={<FileText className="h-4 w-4" />}>
+              <div className="space-y-2">
+                {[...client.complaintsIssues]
+                  .sort((a, b) => b.date.localeCompare(a.date))
+                  .map((item, idx) => (
+                    <div key={`${item.date}-${idx}`} className="rounded-md border border-border/30 bg-muted/20 px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] tabular-nums text-muted-foreground">
+                          {formatClientIssueDate(item.date)}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "px-1.5 py-0 text-[9px] font-bold uppercase",
+                            item.type === "complaint"
+                              ? "border-red-500/25 bg-red-500/10 text-red-600 dark:text-red-400"
+                              : "border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+                          )}
+                        >
+                          {item.type}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-sm whitespace-pre-wrap">{item.note || "—"}</p>
+                    </div>
+                  ))}
+              </div>
+            </ViewSection>
+          )}
+
           {/* Pricing — per product group (drives invoices) */}
           {client.categoryPrices && Object.keys(client.categoryPrices).length > 0 && (
-            <ViewSection title="Pricing" icon={<PoundSterling className="h-4 w-4" />}>
+            <ViewSection title="Pricing" icon={<Coins className="h-4 w-4" />}>
+              <div className="mb-3 flex items-center gap-2">
+                <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
+                  {pricingSymbol} {pricingCurrency}
+                </Badge>
+                <span className="text-[11px] text-muted-foreground">Transaction currency</span>
+              </div>
               <div className="grid grid-cols-3 gap-x-6 gap-y-2">
                 {Object.entries(client.categoryPrices).map(([cat, v]) => (
                   <div key={cat} className="flex justify-between text-sm py-1">
                     <span className="text-muted-foreground">{cat}</span>
-                    <span className="font-medium">{"£"}{Number(v).toFixed(2)}</span>
+                    <span className="font-medium">{pricingSymbol}{Number(v).toFixed(2)}</span>
                   </div>
                 ))}
               </div>
@@ -561,6 +737,24 @@ export default function ClientDetailPage() {
                     </button>
                   </div>
                 )}
+              </div>
+            </ViewSection>
+          )}
+
+          {/* General dated notes — same visual treatment as Design Tracker history. */}
+          {client.clientNotes && client.clientNotes.length > 0 && (
+            <ViewSection title="Client Notes" icon={<FileText className="h-4 w-4" />}>
+              <div className="space-y-2">
+                {[...client.clientNotes]
+                  .sort((a, b) => b.date.localeCompare(a.date))
+                  .map((item, idx) => (
+                    <div key={`${item.date}-${idx}`} className="rounded-md border border-border/30 bg-muted/20 px-3 py-2">
+                      <span className="text-[10px] tabular-nums text-muted-foreground">
+                        {formatClientIssueDate(item.date)}
+                      </span>
+                      <p className="mt-1 text-sm whitespace-pre-wrap">{item.note}</p>
+                    </div>
+                  ))}
               </div>
             </ViewSection>
           )}
@@ -694,13 +888,67 @@ export default function ClientDetailPage() {
               />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Company Number</Label>
+              <Input
+                className={inputCls}
+                placeholder="Registered company number"
+                value={form.companyNumber}
+                onChange={(e) => setField("companyNumber", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Agent Name</Label>
+              <Select
+                value={form.agentId || "unassigned"}
+                onValueChange={(value) => value && setField("agentId", value === "unassigned" ? "" : value)}
+              >
+                <SelectTrigger className={inputCls} aria-label="Agent Name">
+                  <SelectValue placeholder="Select an agent" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {agents.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <div className="space-y-1.5">
             <Label>Main Buyer Names</Label>
             <Input className={inputCls} value={form.mainBuyerNames} onChange={(e) => setField("mainBuyerNames", e.target.value)} />
           </div>
-          <div className="space-y-1.5">
-            <Label>Other Contact & Position</Label>
-            <Input className={inputCls} value={form.otherContactAndPosition} onChange={(e) => setField("otherContactAndPosition", e.target.value)} />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Primary Contact</Label>
+              <Input className={inputCls} value={form.primaryContactName} onChange={(e) => setField("primaryContactName", e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Position</Label>
+              <Input className={inputCls} value={form.primaryContactPosition} onChange={(e) => setField("primaryContactPosition", e.target.value)} />
+            </div>
+          </div>
+          <div className="space-y-3 rounded-xl border border-border/40 bg-muted/10 p-4">
+            <div>
+              <Label className="text-sm font-semibold">Further Contact</Label>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Add another contact person for this client.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label>Name</Label>
+                <Input className={inputCls} value={form.furtherContactName} onChange={(e) => setField("furtherContactName", e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Position</Label>
+                <Input className={inputCls} value={form.furtherContactPosition} onChange={(e) => setField("furtherContactPosition", e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Contact Number</Label>
+                <Input className={inputCls} value={form.furtherContactNumber} onChange={(e) => setField("furtherContactNumber", e.target.value)} />
+              </div>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -752,10 +1000,9 @@ export default function ClientDetailPage() {
               <Select value={form.accountStatus} onValueChange={(v) => v && setField("accountStatus", v)}>
                 <SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="proforma">Proforma</SelectItem>
-                  <SelectItem value="on_hold">On Hold</SelectItem>
-                  <SelectItem value="bad_credit">Bad Credit</SelectItem>
+                  {ACCOUNT_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -865,6 +1112,16 @@ export default function ClientDetailPage() {
               <Input className={inputCls} value={form.city} onChange={(e) => setField("city", e.target.value)} />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Postcode</Label>
+              <Input className={inputCls} value={form.postcode} onChange={(e) => setField("postcode", e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Region</Label>
+              <Input className={inputCls} value={form.region} onChange={(e) => setField("region", e.target.value)} />
+            </div>
+          </div>
           <div className="space-y-1.5">
             <Label>Full Invoice Address</Label>
             <Textarea className={inputCls} rows={3} value={form.invoiceAddressFull} onChange={(e) => setField("invoiceAddressFull", e.target.value)} />
@@ -920,15 +1177,26 @@ export default function ClientDetailPage() {
             <Label>Slow Seller Designs</Label>
             <Textarea className={inputCls} rows={3} value={form.slowSellerDesigns} onChange={(e) => setField("slowSellerDesigns", e.target.value)} />
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              id="edit-substituteDesigns"
-              type="checkbox"
-              checked={form.substituteDesigns}
-              onChange={(e) => setField("substituteDesigns", e.target.checked)}
-              className="h-4 w-4 rounded border-border/40"
-            />
-            <Label htmlFor="edit-substituteDesigns">Substitute Designs</Label>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[auto_minmax(0,1fr)] md:items-end">
+            <div className="flex h-10 items-center gap-2">
+              <input
+                id="edit-substituteDesigns"
+                type="checkbox"
+                checked={form.substituteDesigns}
+                onChange={(e) => setField("substituteDesigns", e.target.checked)}
+                className="h-4 w-4 rounded border-border/40"
+              />
+              <Label htmlFor="edit-substituteDesigns">Substitute Designs</Label>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Substitute Design Notes</Label>
+              <Input
+                className={inputCls}
+                placeholder="Add substitute design details"
+                value={form.substituteDesignNotes}
+                onChange={(e) => setField("substituteDesignNotes", e.target.value)}
+              />
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label>Stands Info</Label>
@@ -951,20 +1219,71 @@ export default function ClientDetailPage() {
         </div>
       </EditSection>
 
-      {/* ── Section 5: Pricing ── */}
-      <EditSection title="Pricing" icon={<PoundSterling className="h-4 w-4" />}>
-        <p className="text-[11px] text-muted-foreground -mt-1 mb-3">
-          Price per <span className="font-semibold">product group</span> for this client. Groups are created on the
-          Products page (Add Group) — here you search an existing group, set this client&rsquo;s price, and add it.
-          Invoices bill each planogram product at its group&rsquo;s price.
-        </p>
-        <CategoryPriceEditor
-          categories={productCategories}
-          value={form.categoryPrices}
-          onChange={(next) => setForm((prev) => ({ ...prev, categoryPrices: next }))}
-          inputCls={inputCls}
-        />
+      {/* ── Complaints & Issues: dated note cards ── */}
+      <EditSection title="Complaints &amp; Issues" icon={<FileText className="h-4 w-4" />}>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Keep a dated history of complaints and issues for this client.
+            </p>
+            <Button type="button" size="sm" variant="outline" className="gap-1.5 rounded-xl" onClick={addComplaintIssue}>
+              <Plus className="h-3.5 w-3.5" /> Add Entry
+            </Button>
+          </div>
+          {form.complaintsIssues.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border/40 bg-muted/10 px-4 py-6 text-center text-xs text-muted-foreground">
+              No complaints or issues recorded.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {form.complaintsIssues.map((item, idx) => (
+                <div key={idx} className="rounded-md border border-border/30 bg-muted/20 p-3">
+                  <div className="grid gap-3 md:grid-cols-[170px_160px_auto] md:items-end">
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px]">Date</Label>
+                      <Input type="date" className={inputCls} value={item.date} onChange={(e) => updateComplaintIssue(idx, "date", e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px]">Type</Label>
+                      <Select value={item.type} onValueChange={(value) => value && updateComplaintIssue(idx, "type", value)}>
+                        <SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="complaint">Complaint</SelectItem>
+                          <SelectItem value="issue">Issue</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button type="button" size="sm" variant="outline" className="justify-self-start text-destructive md:justify-self-end" onClick={() => removeComplaintIssue(idx)}>
+                      <X className="h-3.5 w-3.5" /> Remove
+                    </Button>
+                  </div>
+                  <div className="mt-3 space-y-1.5">
+                    <Label className="text-[11px]">Complaint or issue notes</Label>
+                    <Textarea className={inputCls} rows={3} value={item.note} onChange={(e) => updateComplaintIssue(idx, "note", e.target.value)} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </EditSection>
+
+      {/* ── Section 5: Pricing (admin only) ── */}
+      {isAdmin && (
+        <EditSection title="Pricing" icon={<Coins className="h-4 w-4" />}>
+          <p className="text-[11px] text-muted-foreground -mt-1 mb-3">
+            Choose pounds or euros, then add this client&rsquo;s price for each product group. Invoices use the selected currency.
+          </p>
+          <CategoryPriceEditor
+            categories={productCategories}
+            value={form.categoryPrices}
+            onChange={(next) => setForm((prev) => ({ ...prev, categoryPrices: next }))}
+            currency={form.pricingCurrency}
+            onCurrencyChange={(pricingCurrency) => setForm((prev) => ({ ...prev, pricingCurrency }))}
+            inputCls={inputCls}
+          />
+        </EditSection>
+      )}
 
       {/* ── Section 7: Media (Brand Card + Barcode) ── */}
       <EditSection title="Brand Card &amp; Barcode" icon={<ImageIcon className="h-4 w-4" />}>
@@ -993,7 +1312,48 @@ export default function ClientDetailPage() {
         )}
       </EditSection>
 
-      {/* ── Section 8: Special Information ── */}
+      {/* ── Client Notes: automatic date-stamped history ── */}
+      <EditSection title="Client Notes" icon={<FileText className="h-4 w-4" />}>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Notes are automatically stamped with the date they are added.
+            </p>
+            <Button type="button" size="sm" variant="outline" className="gap-1.5 rounded-xl" onClick={addClientNote}>
+              <Plus className="h-3.5 w-3.5" /> Add Note
+            </Button>
+          </div>
+          {form.clientNotes.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border/40 bg-muted/10 px-4 py-6 text-center text-xs text-muted-foreground">
+              No client notes recorded.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {form.clientNotes.map((item, idx) => (
+                <div key={idx} className="rounded-md border border-border/30 bg-muted/20 px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] tabular-nums text-muted-foreground">
+                      {formatClientIssueDate(item.date)}
+                    </span>
+                    <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={() => removeClientNote(idx)}>
+                      <X className="h-3.5 w-3.5" /> Remove
+                    </Button>
+                  </div>
+                  <Textarea
+                    className={cn(inputCls, "mt-2")}
+                    rows={3}
+                    placeholder="Add a client note"
+                    value={item.note}
+                    onChange={(e) => updateClientNote(idx, e.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </EditSection>
+
+      {/* ── Section 9: Special Information ── */}
       <EditSection title="Special Information" icon={<Store className="h-4 w-4" />}>
         <div className="space-y-1.5">
           <Textarea

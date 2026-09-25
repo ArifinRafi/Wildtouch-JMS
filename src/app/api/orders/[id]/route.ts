@@ -1,9 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isValidObjectId } from "mongoose";
 import { connectDB } from "@/lib/db";
-import { requireAdmin, isResponse } from "@/lib/authz";
+import { requireAdmin, isResponse, sessionUser } from "@/lib/authz";
 import { Order, serializeOrder } from "@/lib/models/Order";
 import { logActivity } from "@/lib/activity";
+import { normalizeOrderSource } from "@/lib/order-source";
 
 export async function GET(
   _request: NextRequest,
@@ -16,7 +17,26 @@ export async function GET(
   await connectDB();
   const doc = await Order.findById(id).lean();
   if (!doc) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json(serializeOrder(doc));
+  const serialized = serializeOrder(doc);
+  const user = await sessionUser();
+
+  // Viewers can use the order's planogram, but must not receive invoice/pricing data.
+  if (user?.role === "viewer") {
+    const safeOrder: Record<string, unknown> = { ...serialized };
+    for (const field of ["subtotal", "shipping", "vatRate", "vat", "total", "amountInvoiced"]) {
+      delete safeOrder[field];
+    }
+    safeOrder.lineItems = serialized.lineItems.map((item) => {
+      if (!item || typeof item !== "object") return item;
+      const safeItem = { ...(item as Record<string, unknown>) };
+      delete safeItem.unitPrice;
+      delete safeItem.lineTotal;
+      return safeItem;
+    });
+    return NextResponse.json(safeOrder);
+  }
+
+  return NextResponse.json(serialized);
 }
 
 export async function PATCH(
@@ -34,12 +54,16 @@ export async function PATCH(
   if (body.status !== undefined) patch.status = body.status;
   if (body.notes !== undefined) patch.notes = String(body.notes);
   if (body.client !== undefined) patch.client = body.client;
+  if (body.agent !== undefined) patch.agent = body.agent;
+  if (body.orderSource !== undefined) patch.orderSource = normalizeOrderSource(body.orderSource);
   if (body.lineItems !== undefined) patch.lineItems = body.lineItems;
   if (body.componentRequirements !== undefined) {
     patch.componentRequirements = body.componentRequirements;
   }
   if (body.subtotal !== undefined) patch.subtotal = Number(body.subtotal) || 0;
   if (body.total !== undefined) patch.total = Number(body.total) || 0;
+  if (body.poNumber !== undefined) patch.poNumber = String(body.poNumber);
+  if (body.referenceNumber !== undefined) patch.referenceNumber = String(body.referenceNumber);
   if (body.inventoryDeducted !== undefined) {
     patch.inventoryDeducted = Boolean(body.inventoryDeducted);
   }

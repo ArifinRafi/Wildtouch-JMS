@@ -20,6 +20,8 @@ export default function PlanogramStepPage() {
   const { draft, patchDraft } = useOrderDraft();
   const { items } = useInventory();
   const { planograms: custom } = useCustomPlanograms();
+  const nextHref = draft.isBackOrder ? "/orders/new/client" : "/orders/new/inventory";
+  const backOrderDateMissing = draft.isBackOrder && !draft.backOrderDate;
 
   // Selector list: custom + built-in.
   const selectorList = useMemo(() => {
@@ -188,7 +190,7 @@ export default function PlanogramStepPage() {
         <SegmentPlanogramGrid segments={segPg.segments} columns={segPg.columns}
           value={segQty.length ? segQty : buildInitialSegQty(segPg)} onChange={setSegQty}
           activeSeg={segActive} onActiveSegChange={setSegActive} />
-        <StepNav backHref="/orders" nextHref="/orders/new/inventory" onNext={segNext} nextDisabled={segGrand === 0} />
+        <StepNav backHref="/orders" nextHref={nextHref} onNext={segNext} nextDisabled={segGrand === 0 || backOrderDateMissing} />
       </div>
     );
   }
@@ -200,7 +202,7 @@ export default function PlanogramStepPage() {
         <SlotPlanogramGrid sides={slotPg.sides} slotCount={slotPg.slotCount}
           value={slots.length ? slots : buildInitialSlots(slotPg)} onChange={setSlots}
           activeSide={slotActive} onActiveSideChange={setSlotActive} />
-        <StepNav backHref="/orders" nextHref="/orders/new/inventory" onNext={slotNext} nextDisabled={slotGrand === 0} />
+        <StepNav backHref="/orders" nextHref={nextHref} onNext={slotNext} nextDisabled={slotGrand === 0 || backOrderDateMissing} />
       </div>
     );
   }
@@ -216,7 +218,7 @@ export default function PlanogramStepPage() {
           activeSide={rowActive}
           onActiveSideChange={setRowActive}
         />
-        <StepNav backHref="/orders" nextHref="/orders/new/inventory" onNext={rowNext} nextDisabled={rowGrand === 0} />
+        <StepNav backHref="/orders" nextHref={nextHref} onNext={rowNext} nextDisabled={rowGrand === 0 || backOrderDateMissing} />
       </div>
     );
   }

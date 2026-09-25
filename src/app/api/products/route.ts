@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Product, serializeProduct } from "@/lib/models/Product";
 import { logActivity } from "@/lib/activity";
+import { productNameOnly } from "@/lib/product-title";
 
 export async function GET(request: NextRequest) {
   await connectDB();
@@ -15,9 +16,10 @@ export async function POST(request: NextRequest) {
   await connectDB();
   const body = await request.json();
 
-  const name = String(body.name ?? "").trim();
-  if (!name) {
-    return NextResponse.json({ error: "name is required" }, { status: 400 });
+  const group = String(body.group ?? "").trim();
+  const name = productNameOnly(group, body.name);
+  if (!group || !name) {
+    return NextResponse.json({ error: "product line and name are required" }, { status: 400 });
   }
 
   const components = Array.isArray(body.components)
@@ -30,7 +32,7 @@ export async function POST(request: NextRequest) {
 
   const created = await Product.create({
     name,
-    group: String(body.group ?? "").trim(),
+    group,
     planogramId: String(body.planogramId ?? "").trim(),
     planogramName: String(body.planogramName ?? "").trim(),
     segment: String(body.segment ?? "").trim(),

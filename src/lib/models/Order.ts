@@ -1,4 +1,5 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
+import { ORDER_SOURCE_OPTIONS, normalizeOrderSource } from "@/lib/order-source";
 
 export const ORDER_STATUSES = [
   "received",
@@ -43,10 +44,26 @@ const ClientSnapshotSchema = new Schema(
   {
     clientId: { type: String, default: "" },
     name: { type: String, default: "" },
+    contactName: { type: String, default: "" },
+    companyName: { type: String, default: "" },
     email: { type: String, default: "" },
     contactNumber: { type: String, default: "" },
     invoiceAddress: { type: String, default: "" },
     deliveryAddress: { type: String, default: "" },
+    brandCardImage: { type: String, default: "" },
+    barcodeImage: { type: String, default: "" },
+  },
+  { _id: false },
+);
+
+/** Snapshot of the sales agent assigned when the order was created. */
+const AgentSnapshotSchema = new Schema(
+  {
+    agentId: { type: String, default: "" },
+    name: { type: String, default: "" },
+    email: { type: String, default: "" },
+    contactNumber: { type: String, default: "" },
+    city: { type: String, default: "" },
   },
   { _id: false },
 );
@@ -60,6 +77,12 @@ const OrderSchema = new Schema(
       name: { type: String, default: "" },
     },
     client: { type: ClientSnapshotSchema, default: () => ({}) },
+    agent: { type: AgentSnapshotSchema, default: () => ({}) },
+    orderSource: {
+      type: String,
+      enum: ["", ...ORDER_SOURCE_OPTIONS.map((option) => option.value)],
+      default: "",
+    },
     lineItems: { type: [LineItemSchema], default: [] },
     componentRequirements: { type: [ComponentRequirementSchema], default: [] },
     subtotal: { type: Number, default: 0, min: 0 },
@@ -67,8 +90,11 @@ const OrderSchema = new Schema(
     vatRate: { type: Number, default: 0, min: 0 },
     vat: { type: Number, default: 0, min: 0 },
     total: { type: Number, default: 0, min: 0 },
+    currency: { type: String, enum: ["GBP", "EUR"], default: "GBP" },
     /** Sum of partial-invoice payments issued so far (installments against the total). */
     amountInvoiced: { type: Number, default: 0, min: 0 },
+    poNumber: { type: String, default: "" },
+    referenceNumber: { type: String, default: "" },
     notes: { type: String, default: "" },
     inventoryDeducted: { type: Boolean, default: false },
   },
@@ -94,6 +120,8 @@ export function serializeOrder(doc: {
   status?: string;
   planogram?: { id?: string; name?: string } | null;
   client?: Record<string, unknown> | null;
+  agent?: Record<string, unknown> | null;
+  orderSource?: string;
   lineItems?: unknown[] | null;
   componentRequirements?: unknown[] | null;
   subtotal?: number;
@@ -101,7 +129,10 @@ export function serializeOrder(doc: {
   vatRate?: number;
   vat?: number;
   total?: number;
+  currency?: string;
   amountInvoiced?: number;
+  poNumber?: string;
+  referenceNumber?: string;
   notes?: string;
   inventoryDeducted?: boolean;
   createdAt?: Date;
@@ -113,6 +144,8 @@ export function serializeOrder(doc: {
     status: doc.status ?? "received",
     planogram: { id: doc.planogram?.id ?? "", name: doc.planogram?.name ?? "" },
     client: doc.client ?? {},
+    agent: doc.agent ?? {},
+    orderSource: normalizeOrderSource(doc.orderSource),
     lineItems: doc.lineItems ?? [],
     componentRequirements: doc.componentRequirements ?? [],
     subtotal: doc.subtotal ?? 0,
@@ -120,7 +153,10 @@ export function serializeOrder(doc: {
     vatRate: doc.vatRate ?? 0,
     vat: doc.vat ?? 0,
     total: doc.total ?? 0,
+    currency: doc.currency ?? "GBP",
     amountInvoiced: doc.amountInvoiced ?? 0,
+    poNumber: doc.poNumber ?? "",
+    referenceNumber: doc.referenceNumber ?? "",
     notes: doc.notes ?? "",
     inventoryDeducted: doc.inventoryDeducted ?? false,
     createdAt: doc.createdAt ?? null,

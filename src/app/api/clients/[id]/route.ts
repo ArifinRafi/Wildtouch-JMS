@@ -3,6 +3,8 @@ import { connectDB } from "@/lib/db";
 import { requireAdmin, isResponse } from "@/lib/authz";
 import { Client, serializeClient } from "@/lib/models/Client";
 import { logActivity } from "@/lib/activity";
+import { normalizeCurrency } from "@/lib/currency";
+import { normalizeAccountStatus } from "@/lib/client-status";
 
 export async function GET(
   _request: NextRequest,
@@ -22,9 +24,16 @@ export async function PATCH(
   const { id } = await ctx.params;
   await connectDB();
   const body = await request.json();
+
+  if ("categoryPrices" in body || "pricingCurrency" in body) {
+    const gate = await requireAdmin();
+    if (isResponse(gate)) return gate;
+  }
   const { id: _ignore, _id: _ignore2, ...patch } = body;
   void _ignore;
   void _ignore2;
+  if ("pricingCurrency" in patch) patch.pricingCurrency = normalizeCurrency(patch.pricingCurrency);
+  if ("accountStatus" in patch) patch.accountStatus = normalizeAccountStatus(patch.accountStatus);
 
   const updated = await Client.findByIdAndUpdate(id, patch, { new: true }).lean();
   if (!updated) return NextResponse.json({ error: "not found" }, { status: 404 });

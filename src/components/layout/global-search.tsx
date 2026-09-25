@@ -14,6 +14,7 @@ import {
   CornerDownLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatProductTitle } from "@/lib/product-title";
 
 type ResultType = "client" | "product" | "order" | "invoice" | "planogram";
 
@@ -107,7 +108,7 @@ export function GlobalSearch() {
     const products: SearchResult[] = data.products
       .filter((p) => has(p.name, p.code, p.group))
       .slice(0, PER_TYPE)
-      .map((p) => ({ type: "product", label: p.name || "Product", sublabel: [p.code, p.group].filter(Boolean).join(" · "), href: `/products?q=${encodeURIComponent(p.name || p.code || "")}` }));
+      .map((p) => ({ type: "product", label: formatProductTitle(p.group, p.name) || "Product", sublabel: p.code || "", href: `/products?q=${encodeURIComponent(p.name || p.code || "")}` }));
 
     const orders: SearchResult[] = data.orders
       .filter((o) => has(o.orderNumber, o.client?.name))

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import {
@@ -16,10 +16,14 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  ShieldCheck,
+  KeyRound,
+  Loader2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +35,8 @@ import { cn } from "@/lib/utils";
 import { type CatalogItem } from "@/lib/data/inventory/catalog";
 import type { InventoryComponent } from "@/lib/data/inventory/types";
 import { useInventory } from "@/lib/store/inventory-store";
+import { useInventoryAccess } from "@/lib/hooks/use-inventory-access";
+import { formatProductTitle, productNameOnly } from "@/lib/product-title";
 
 const PAGE_SIZE = 50;
 
@@ -41,15 +47,30 @@ function qtyClass(qty: number) {
 }
 
 interface EditForm {
+  productLine: string;
   description: string;
   code: string;
   qtyAvailable: string;
   components: InventoryComponent[];
 }
 
+interface InventoryAccessUser {
+  id: string;
+  username: string;
+  email: string;
+  role: "manager" | "viewer";
+  inventoryWriteAccess: boolean;
+}
+
 export default function AllComponentsPage() {
   // Shared inventory store (session-persistent across pages)
   const { items, updateItem, deleteItem } = useInventory();
+  const {
+    canWriteInventory,
+    canDeleteInventory,
+    isAdmin,
+    loading: accessPermissionLoading,
+  } = useInventoryAccess();
 
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -61,6 +82,79 @@ export default function AllComponentsPage() {
   // Delete confirm
   const [toDelete, setToDelete] = useState<CatalogItem | null>(null);
 
+  // Admin-only delegated inventory access.
+  const [accessDialogOpen, setAccessDialogOpen] = useState(false);
+  const [accessUsers, setAccessUsers] = useState<InventoryAccessUser[]>([]);
+  const [accessUsersLoading, setAccessUsersLoading] = useState(false);
+  const [accessTarget, setAccessTarget] = useState<InventoryAccessUser | null>(null);
+  const [nextAccessValue, setNextAccessValue] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [accessError, setAccessError] = useState("");
+  const [accessSaving, setAccessSaving] = useState(false);
+
+  const loadAccessUsers = useCallback(async () => {
+    setAccessUsersLoading(true);
+    setAccessError("");
+    try {
+      const response = await fetch("/api/inventory/access", { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not load users");
+      setAccessUsers(data);
+    } catch (error) {
+      setAccessError(error instanceof Error ? error.message : "Could not load users");
+    } finally {
+      setAccessUsersLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (accessDialogOpen && isAdmin) loadAccessUsers();
+  }, [accessDialogOpen, isAdmin, loadAccessUsers]);
+
+  const prepareAccessChange = useCallback((user: InventoryAccessUser, allowed: boolean) => {
+    setAccessTarget(user);
+    setNextAccessValue(allowed);
+    setAdminPassword("");
+    setAccessError("");
+  }, []);
+
+  const applyAccessChange = useCallback(async () => {
+    if (!accessTarget || !adminPassword) return;
+    setAccessSaving(true);
+    setAccessError("");
+    try {
+      const response = await fetch("/api/inventory/access", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: accessTarget.id,
+          allowed: nextAccessValue,
+          password: adminPassword,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not update access");
+      setAccessUsers((current) =>
+        current.map((user) =>
+          user.id === data.id ? { ...user, inventoryWriteAccess: data.inventoryWriteAccess } : user,
+        ),
+      );
+      setAccessTarget(null);
+      setAdminPassword("");
+    } catch (error) {
+      setAccessError(error instanceof Error ? error.message : "Could not update access");
+    } finally {
+      setAccessSaving(false);
+    }
+  }, [accessTarget, adminPassword, nextAccessValue]);
+
+  const closeAccessDialog = useCallback(() => {
+    setAccessDialogOpen(false);
+    setAccessTarget(null);
+    setAdminPassword("");
+    setAccessError("");
+  }, []);
+
   // ── Filtering ──
   const filtered = useMemo(() => {
     let list = items;
@@ -68,7 +162,7 @@ export default function AllComponentsPage() {
       const q = search.toLowerCase();
       list = list.filter(
         (it) =>
-          it.description.toLowerCase().includes(q) ||
+          formatProductTitle(it.productLine, it.description).toLowerCase().includes(q) ||
           it.code.toLowerCase().includes(q) ||
           it.components.some(
             (c) => c.code.toLowerCase().includes(q) || c.label.toLowerCase().includes(q),
@@ -95,7 +189,8 @@ export default function AllComponentsPage() {
   const openEdit = useCallback((it: CatalogItem) => {
     setEditing(it);
     setForm({
-      description: it.description,
+      productLine: it.productLine ?? "",
+      description: productNameOnly(it.productLine, it.description),
       code: it.code,
       qtyAvailable: String(it.qtyAvailable),
       components: it.components.map((c) => ({ ...c })),
@@ -109,6 +204,7 @@ export default function AllComponentsPage() {
       .map((c) => ({ label: c.label.trim(), code: c.code.trim() }))
       .filter((c) => c.label || c.code);
     updateItem(editing.id, {
+      productLine: form.productLine.trim(),
       description: form.description.trim(),
       code: form.code.trim(),
       qtyAvailable: qty,
@@ -151,14 +247,32 @@ export default function AllComponentsPage() {
               <span className="font-semibold text-primary">{items.length.toLocaleString()} components</span>
             </p>
           </div>
-          <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-            <Link href="/inventory/add-component">
-              <Button className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 hover:from-primary/90 hover:to-indigo-500/90 shadow-lg shadow-primary/20 text-white font-semibold">
-                <Plus className="h-4 w-4" />
-                Add Component
+          <div className="flex flex-wrap items-center gap-2">
+            {isAdmin && (
+              <Button
+                variant="outline"
+                className="gap-2 rounded-xl border-primary/25 bg-primary/5 text-primary"
+                onClick={() => setAccessDialogOpen(true)}
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Manage Inventory Access
               </Button>
-            </Link>
-          </motion.div>
+            )}
+            {!accessPermissionLoading && canWriteInventory ? (
+              <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                <Link href="/inventory/add-component">
+                  <Button className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 hover:from-primary/90 hover:to-indigo-500/90 shadow-lg shadow-primary/20 text-white font-semibold">
+                    <Plus className="h-4 w-4" />
+                    Add Component
+                  </Button>
+                </Link>
+              </motion.div>
+            ) : !accessPermissionLoading ? (
+              <Badge variant="outline" className="h-9 border-border/40 bg-muted/20 px-3 text-muted-foreground">
+                View-only inventory
+              </Badge>
+            ) : null}
+          </div>
         </div>
       </motion.div>
 
@@ -198,7 +312,7 @@ export default function AllComponentsPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
           <Input
-            placeholder="Search component name, code, parts..."
+            placeholder="Search product line, name, code, parts..."
             value={search}
             onChange={(e) => onSearch(e.target.value)}
             className="pl-9 rounded-xl bg-card/70 glass border-border/40"
@@ -218,18 +332,20 @@ export default function AllComponentsPage() {
             <thead>
               <tr className="border-b border-border/30 bg-muted/20">
                 <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-12">#</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Component Name</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Product Title</th>
                 <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Code</th>
                 <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Components</th>
                 <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Qty Available</th>
-                <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
+                {(canWriteInventory || canDeleteInventory) && (
+                  <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
+                )}
               </tr>
             </thead>
             <tbody>
               <AnimatePresence mode="popLayout">
                 {pageItems.length === 0 ? (
                   <tr key="empty">
-                    <td colSpan={6}>
+                    <td colSpan={canWriteInventory || canDeleteInventory ? 6 : 5}>
                       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                         <Package className="h-10 w-10 mb-3 opacity-20" />
                         <p className="text-sm font-medium">No components match your search</p>
@@ -260,7 +376,7 @@ export default function AllComponentsPage() {
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 border border-primary/15">
                             <Boxes className="h-4 w-4 text-primary" />
                           </div>
-                          <p className="text-sm font-medium">{it.description || "—"}</p>
+                          <p className="text-sm font-medium">{formatProductTitle(it.productLine, it.description) || "—"}</p>
                         </div>
                       </td>
 
@@ -307,28 +423,34 @@ export default function AllComponentsPage() {
                       </td>
 
                       {/* Actions */}
-                      <td className="px-4 py-3 align-middle">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => openEdit(it)}
-                            title="Modify"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 transition-colors"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </motion.button>
-                          <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => setToDelete(it)}
-                            title="Delete"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/20 transition-colors"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </motion.button>
-                        </div>
-                      </td>
+                      {(canWriteInventory || canDeleteInventory) && (
+                        <td className="px-4 py-3 align-middle">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {canWriteInventory && (
+                              <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => openEdit(it)}
+                                title="Modify"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 transition-colors"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </motion.button>
+                            )}
+                            {canDeleteInventory && (
+                              <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => setToDelete(it)}
+                                title="Delete"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/20 transition-colors"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </motion.button>
+                            )}
+                          </div>
+                        </td>
+                      )}
                     </motion.tr>
                   ))
                 )}
@@ -371,6 +493,142 @@ export default function AllComponentsPage() {
         </div>
       </motion.div>
 
+      {/* ── Admin inventory access manager ── */}
+      <Dialog
+        open={accessDialogOpen}
+        onOpenChange={(open) => (open ? setAccessDialogOpen(true) : closeAccessDialog())}
+      >
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <ShieldCheck className="h-4 w-4 text-primary" />
+              Inventory Update Access
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              Grant managers or viewers permission to add and modify inventory. Inventory deletion remains admin-only.
+            </p>
+          </DialogHeader>
+
+          <div className="min-h-0 space-y-3 overflow-y-auto pr-1">
+            {accessError && (
+              <p className="rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+                {accessError}
+              </p>
+            )}
+
+            {accessUsersLoading ? (
+              <div className="flex items-center justify-center gap-2 py-10 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm">Loading users…</span>
+              </div>
+            ) : accessUsers.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border/40 px-4 py-8 text-center text-sm text-muted-foreground">
+                No manager or viewer accounts are available.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {accessUsers.map((user) => (
+                  <div
+                    key={user.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/30 bg-muted/10 px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold">{user.username}</p>
+                        <Badge variant="outline" className="text-[9px] font-bold uppercase">
+                          {user.role}
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[9px] font-bold uppercase",
+                            user.inventoryWriteAccess
+                              ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                              : "border-border/40 bg-muted/20 text-muted-foreground",
+                          )}
+                        >
+                          {user.inventoryWriteAccess ? "Access enabled" : "No access"}
+                        </Badge>
+                      </div>
+                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{user.email}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={user.inventoryWriteAccess ? "outline" : "default"}
+                      className={cn(
+                        "rounded-xl",
+                        user.inventoryWriteAccess && "border-destructive/30 text-destructive hover:bg-destructive/10",
+                      )}
+                      onClick={() => prepareAccessChange(user, !user.inventoryWriteAccess)}
+                    >
+                      {user.inventoryWriteAccess ? "Revoke Access" : "Grant Access"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {accessTarget && (
+              <div className="rounded-xl border border-primary/25 bg-primary/5 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <KeyRound className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">
+                      {nextAccessValue ? "Grant" : "Revoke"} access for {accessTarget.username}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Enter your current admin password to confirm this permission change.
+                    </p>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <Input
+                        type="password"
+                        value={adminPassword}
+                        onChange={(event) => setAdminPassword(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" && adminPassword && !accessSaving) applyAccessChange();
+                        }}
+                        placeholder="Admin password"
+                        autoComplete="current-password"
+                        className="rounded-xl bg-background/70 border-border/40"
+                      />
+                      <Button
+                        type="button"
+                        disabled={!adminPassword || accessSaving}
+                        className="rounded-xl sm:min-w-28"
+                        onClick={applyAccessChange}
+                      >
+                        {accessSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="rounded-xl"
+                        onClick={() => {
+                          setAccessTarget(null);
+                          setAdminPassword("");
+                          setAccessError("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="border-t border-border/30 pt-4">
+            <Button variant="outline" className="rounded-xl" onClick={closeAccessDialog}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Edit dialog ── */}
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) { setEditing(null); setForm(null); } }}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col rounded-2xl">
@@ -383,12 +641,26 @@ export default function AllComponentsPage() {
           {form && (
             <div className="space-y-4 overflow-y-auto pr-1">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Component Name</Label>
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Line</Label>
                 <Input
                   className="rounded-xl bg-muted/30 border-border/40"
+                  placeholder="e.g. Large Keyring"
+                  value={form.productLine}
+                  onChange={(e) => setForm((f) => (f ? { ...f, productLine: e.target.value } : f))}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Product Name</Label>
+                <Input
+                  className="rounded-xl bg-muted/30 border-border/40"
+                  placeholder="e.g. 10 Downing Street"
                   value={form.description}
                   onChange={(e) => setForm((f) => (f ? { ...f, description: e.target.value } : f))}
                 />
+                <p className="text-[11px] text-muted-foreground">
+                  Title preview: <span className="font-semibold text-foreground">{formatProductTitle(form.productLine, form.description) || "Product Line: Name"}</span>
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -462,6 +734,7 @@ export default function AllComponentsPage() {
             </Button>
             <Button
               onClick={saveEdit}
+              disabled={!form?.productLine.trim() || !form?.description.trim()}
               className="rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold"
             >
               Save Changes
@@ -486,7 +759,7 @@ export default function AllComponentsPage() {
           </DialogHeader>
           {toDelete && (
             <div className="rounded-xl border border-border/40 bg-muted/20 px-4 py-3">
-              <p className="text-sm font-semibold">{toDelete.description || "—"}</p>
+              <p className="text-sm font-semibold">{formatProductTitle(toDelete.productLine, toDelete.description) || "—"}</p>
               {toDelete.code && (
                 <div className="mt-1">
                   <span className="text-[10px] font-mono text-muted-foreground">{toDelete.code}</span>

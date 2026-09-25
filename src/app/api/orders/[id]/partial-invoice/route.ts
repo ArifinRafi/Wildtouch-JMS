@@ -5,6 +5,7 @@ import { Order, serializeOrder } from "@/lib/models/Order";
 import { Invoice, nextInvoiceNumber, serializeInvoice } from "@/lib/models/Invoice";
 import { groupIntoCategoryLines } from "@/lib/invoicing";
 import { logActivity } from "@/lib/activity";
+import { formatCurrency, normalizeCurrency } from "@/lib/currency";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -33,6 +34,7 @@ export async function POST(
   if (!order) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const orderTotal = round2(order.total ?? 0);
+  const currency = normalizeCurrency(order.currency);
   if (orderTotal <= 0) {
     return NextResponse.json(
       { error: "this order has no total amount — add pricing before creating a partial invoice" },
@@ -47,7 +49,7 @@ export async function POST(
   }
   if (amount > remaining + 0.005) {
     return NextResponse.json(
-      { error: `amount exceeds the remaining balance of £${remaining.toFixed(2)}` },
+      { error: `amount exceeds the remaining balance of ${formatCurrency(remaining, currency)}` },
       { status: 400 },
     );
   }
@@ -75,7 +77,7 @@ export async function POST(
     vatRate: order.vatRate ?? 0,
     vat: order.vat ?? 0,
     total: orderTotal,
-    currency: "GBP",
+    currency,
     status: "issued",
     isPartial: true,
     paymentAmount: amount,
@@ -91,7 +93,7 @@ export async function POST(
     entityType: "partial invoice",
     entityName: invoiceNumber,
     entityId: String(invoice._id),
-    details: `£${amount.toFixed(2)} against ${order.orderNumber} — £${balanceDue.toFixed(2)} remaining`,
+    details: `${formatCurrency(amount, currency)} against ${order.orderNumber} — ${formatCurrency(balanceDue, currency)} remaining`,
   });
 
   return NextResponse.json(

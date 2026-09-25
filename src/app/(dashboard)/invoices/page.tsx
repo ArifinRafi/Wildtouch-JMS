@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { formatCurrency, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
 
 interface InvoiceListItem {
   id: string;
@@ -23,6 +24,7 @@ interface InvoiceListItem {
   isPartial?: boolean;
   paymentAmount?: number;
   balanceDue?: number;
+  currency?: string;
   createdAt: string | null;
 }
 
@@ -90,7 +92,19 @@ export default function InvoicesPage() {
   };
 
   // Partial invoices count for their payment amount, not the full order total.
-  const totalValue = filtered.reduce((s, i) => s + (i.isPartial ? i.paymentAmount || 0 : i.total || 0), 0);
+  const totalValue = filtered.reduce<Record<SupportedCurrency, number>>(
+    (totals, invoice) => {
+      totals[normalizeCurrency(invoice.currency)] += invoice.isPartial
+        ? invoice.paymentAmount || 0
+        : invoice.total || 0;
+      return totals;
+    },
+    { GBP: 0, EUR: 0 },
+  );
+  const totalValueLabel = (Object.entries(totalValue) as [SupportedCurrency, number][])
+    .filter(([, amount]) => amount !== 0)
+    .map(([currency, amount]) => formatCurrency(amount, currency))
+    .join(" · ") || formatCurrency(0, "GBP");
 
   return (
     <div className="space-y-6 pb-12">
@@ -101,7 +115,7 @@ export default function InvoicesPage() {
             <Receipt className="h-7 w-7 text-primary" /> Invoices
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {filtered.length} invoice{filtered.length === 1 ? "" : "s"}{dateFilter ? " on this date" : ""} · <span className="font-semibold text-primary">£{totalValue.toLocaleString()}</span> total
+            {filtered.length} invoice{filtered.length === 1 ? "" : "s"}{dateFilter ? " on this date" : ""} · <span className="font-semibold text-primary">{totalValueLabel}</span> total
           </p>
         </div>
         {/* Date filter */}
@@ -182,10 +196,10 @@ export default function InvoicesPage() {
                       <td className="px-5 py-3 text-sm font-medium">{inv.client?.name || "—"}</td>
                       <td className="px-5 py-3 text-xs text-muted-foreground">{fmtDate(inv.createdAt)}</td>
                       <td className="px-5 py-3 text-right text-sm font-semibold tabular-nums">
-                        £{(inv.isPartial ? inv.paymentAmount || 0 : inv.total || 0).toLocaleString()}
+                        {formatCurrency(inv.isPartial ? inv.paymentAmount || 0 : inv.total || 0, inv.currency)}
                         {inv.isPartial && (
                           <p className="text-[10px] font-medium text-muted-foreground mt-0.5">
-                            of £{(inv.total || 0).toLocaleString()} · £{(inv.balanceDue || 0).toLocaleString()} left
+                            of {formatCurrency(inv.total || 0, inv.currency)} · {formatCurrency(inv.balanceDue || 0, inv.currency)} left
                           </p>
                         )}
                       </td>

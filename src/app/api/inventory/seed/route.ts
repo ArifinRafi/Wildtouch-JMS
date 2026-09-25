@@ -2,8 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Component } from "@/lib/models/Component";
 import { getAllCatalogItems } from "@/lib/data/inventory/catalog";
+import { isResponse, requireAdmin } from "@/lib/authz";
 
 export async function POST(request: NextRequest) {
+  const gate = await requireAdmin();
+  if (isResponse(gate)) return gate;
+
   await connectDB();
 
   const force = request.nextUrl.searchParams.get("force") === "1";
@@ -18,6 +22,7 @@ export async function POST(request: NextRequest) {
   }
 
   const docs = getAllCatalogItems().map((it) => ({
+    productLine: it.category ?? "",
     description: it.description,
     code: it.code,
     components: it.components,

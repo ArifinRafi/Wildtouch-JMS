@@ -1,10 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { PoundSterling, Search, X, Plus } from "lucide-react";
+import { Euro, PoundSterling, Search, X, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import type { SupportedCurrency } from "@/lib/currency";
 
 /**
  * Per-client category price list. Groups are created on the Products page
@@ -15,6 +23,8 @@ export function CategoryPriceEditor({
   categories,
   value,
   onChange,
+  currency,
+  onCurrencyChange,
   inputCls,
 }: {
   /** All existing product groups (from /api/product-groups). */
@@ -22,6 +32,8 @@ export function CategoryPriceEditor({
   /** Current prices: group name → price string (form state). */
   value: Record<string, string>;
   onChange: (next: Record<string, string>) => void;
+  currency: SupportedCurrency;
+  onCurrencyChange: (currency: SupportedCurrency) => void;
   inputCls?: string;
 }) {
   const [query, setQuery] = useState("");
@@ -50,6 +62,7 @@ export function CategoryPriceEditor({
   }, [query, categories, added]);
 
   const canAdd = !!resolvedGroup && price.trim() !== "" && Number(price) >= 0;
+  const CurrencyIcon = currency === "EUR" ? Euro : PoundSterling;
 
   const add = () => {
     if (!canAdd) return;
@@ -68,6 +81,24 @@ export function CategoryPriceEditor({
 
   return (
     <div className="space-y-3">
+      <div className="flex flex-col gap-2 rounded-xl border border-border/40 bg-muted/10 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold">Transaction currency</p>
+          <p className="text-[11px] text-muted-foreground">
+            This currency applies to every product-group price below and to future invoices.
+          </p>
+        </div>
+        <Select value={currency} onValueChange={(value) => onCurrencyChange(value as SupportedCurrency)}>
+          <SelectTrigger aria-label="Pricing currency" className="w-full rounded-xl bg-background sm:w-52">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="GBP">£ Pound sterling (GBP)</SelectItem>
+            <SelectItem value="EUR">€ Euro (EUR)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* Add row: search group · price · Add */}
       <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
         {/* Group search */}
@@ -111,7 +142,7 @@ export function CategoryPriceEditor({
         {/* Price */}
         <div className="relative w-full sm:w-40 shrink-0">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-            <PoundSterling className="h-3.5 w-3.5" />
+            <CurrencyIcon className="h-3.5 w-3.5" />
           </span>
           <Input
             type="number"
@@ -147,7 +178,7 @@ export function CategoryPriceEditor({
               <span className="min-w-0 flex-1 truncate text-sm font-medium" title={cat}>{cat}</span>
               <div className="relative w-28 shrink-0">
                 <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                  <PoundSterling className="h-3.5 w-3.5" />
+                  <CurrencyIcon className="h-3.5 w-3.5" />
                 </span>
                 <Input
                   type="number"

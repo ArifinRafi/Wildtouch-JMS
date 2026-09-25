@@ -8,6 +8,8 @@ const UserSchema = new Schema(
     email: { type: String, required: true, unique: true },
     passwordHash: { type: String, required: true },
     role: { type: String, enum: ["admin", "manager", "viewer"], default: "manager" },
+    /** Admin-granted permission to add and modify inventory components. */
+    inventoryWriteAccess: { type: Boolean, default: false },
     /** Hashed 6-digit reset token + expiry for the master-email password flow. */
     resetTokenHash: { type: String, default: null },
     resetTokenExp: { type: Date, default: null },
@@ -21,6 +23,7 @@ export type UserDoc = {
   email: string;
   passwordHash: string;
   role: UserRole;
+  inventoryWriteAccess?: boolean;
   resetTokenHash?: string | null;
   resetTokenExp?: Date | null;
   createdAt?: Date;
@@ -36,6 +39,7 @@ export function serializeUser(doc: UserDoc) {
     username: doc.username,
     email: doc.email,
     role: doc.role,
+    inventoryWriteAccess: doc.inventoryWriteAccess ?? false,
     createdAt: doc.createdAt ?? null,
   };
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   PackageCheck,
@@ -24,11 +25,16 @@ interface Requirement {
 }
 
 export default function InventoryStepPage() {
+  const router = useRouter();
   const { draft, patchDraft } = useOrderDraft();
   const { items, loading: invLoading } = useInventory();
   const { products, loading: prodLoading } = useProducts();
 
   const loading = invLoading || prodLoading;
+
+  useEffect(() => {
+    if (draft.isBackOrder) router.replace("/orders/new/client");
+  }, [draft.isBackOrder, router]);
 
   // Map: normalized product name -> Product (for BOM lookup)
   const productByName = useMemo(() => {

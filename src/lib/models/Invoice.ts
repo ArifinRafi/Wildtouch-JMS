@@ -15,10 +15,14 @@ const InvoiceClientSchema = new Schema(
   {
     clientId: { type: String, default: "" },
     name: { type: String, default: "" },
+    contactName: { type: String, default: "" },
+    companyName: { type: String, default: "" },
     email: { type: String, default: "" },
     contactNumber: { type: String, default: "" },
     invoiceAddress: { type: String, default: "" },
     deliveryAddress: { type: String, default: "" },
+    brandCardImage: { type: String, default: "" },
+    barcodeImage: { type: String, default: "" },
   },
   { _id: false },
 );

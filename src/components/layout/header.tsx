@@ -24,8 +24,24 @@ interface HeaderProps {
 export function Header({ onMenuClick }: HeaderProps) {
   const session = useRole();
   const [me, setMe] = useState<{ username: string; email: string; role: string } | null>(null);
+  const [backOrderAlerts, setBackOrderAlerts] = useState<Array<{
+    id: string;
+    backOrderNumber: string;
+    deliveryDate: string;
+    client?: { name?: string; clientId?: string };
+  }>>([]);
   useEffect(() => {
     fetch("/api/users/me").then((r) => (r.ok ? r.json() : null)).then((d) => d && setMe(d)).catch(() => {});
+    const refreshAlerts = () => {
+      fetch("/api/back-orders/alerts").then((r) => (r.ok ? r.json() : [])).then(setBackOrderAlerts).catch(() => {});
+    };
+    refreshAlerts();
+    window.addEventListener("back-orders-changed", refreshAlerts);
+    const timer = window.setInterval(refreshAlerts, 60_000);
+    return () => {
+      window.removeEventListener("back-orders-changed", refreshAlerts);
+      window.clearInterval(timer);
+    };
   }, []);
   const username = me?.username ?? session.username;
   const email = me?.email ?? session.email;
@@ -66,31 +82,25 @@ export function Header({ onMenuClick }: HeaderProps) {
         <DropdownMenu>
           <DropdownMenuTrigger className="relative inline-flex items-center justify-center rounded-xl h-9 w-9 text-sm font-medium transition-colors hover:bg-accent/60 focus-visible:outline-none">
             <Bell className="h-4.5 w-4.5 text-muted-foreground" />
-            <span className="absolute -right-0.5 -top-0.5 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-gradient-to-br from-red-500 to-pink-500 text-[9px] font-bold text-white shadow-sm">
-              3
-            </span>
+            {backOrderAlerts.length > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-gradient-to-br from-red-500 to-pink-500 px-1 text-[9px] font-bold text-white shadow-sm">
+                {backOrderAlerts.length > 9 ? "9+" : backOrderAlerts.length}
+              </span>
+            )}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80 glass-strong bg-popover/95 border-border/40 rounded-2xl p-1">
             <DropdownMenuLabel className="px-3 py-2">Notifications</DropdownMenuLabel>
             <DropdownMenuSeparator className="opacity-30" />
-            <DropdownMenuItem className="flex flex-col items-start gap-1 p-3 rounded-xl cursor-pointer">
-              <span className="text-sm font-medium">Low Stock Alert</span>
-              <span className="text-xs text-muted-foreground">
-                Jump rings (JR-001) below threshold — 45 remaining
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuItem className="flex flex-col items-start gap-1 p-3 rounded-xl cursor-pointer">
-              <span className="text-sm font-medium">Dormant Client</span>
-              <span className="text-xs text-muted-foreground">
-                Boutique Gems Ltd has not ordered in 62 days
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuItem className="flex flex-col items-start gap-1 p-3 rounded-xl cursor-pointer">
-              <span className="text-sm font-medium">Order Overdue</span>
-              <span className="text-xs text-muted-foreground">
-                Order #1247 past dispatch deadline by 2 days
-              </span>
-            </DropdownMenuItem>
+            {backOrderAlerts.length === 0 ? (
+              <DropdownMenuItem className="p-3 text-xs text-muted-foreground">No back orders due this month.</DropdownMenuItem>
+            ) : backOrderAlerts.map((order) => (
+              <DropdownMenuItem key={order.id} render={<Link href="/back-orders" />} className="flex flex-col items-start gap-1 p-3 rounded-xl cursor-pointer">
+                <span className="text-sm font-medium">Back order due · {order.backOrderNumber}</span>
+                <span className="text-xs text-muted-foreground">
+                  {order.client?.name || order.client?.clientId || "Client"} · {new Date(`${order.deliveryDate}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                </span>
+              </DropdownMenuItem>
+            ))}
           </DropdownMenuContent>
         </DropdownMenu>
 

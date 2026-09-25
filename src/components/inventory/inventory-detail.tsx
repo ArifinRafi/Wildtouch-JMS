@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { InventoryItem } from "@/lib/data/inventory/types";
+import { formatProductTitle } from "@/lib/product-title";
 
 // Quantity badge colour by stock level
 function qtyClass(qty: number) {
@@ -37,13 +38,13 @@ export function InventoryDetail({
     const q = search.toLowerCase();
     return items.filter(
       (it) =>
-        it.description.toLowerCase().includes(q) ||
+        formatProductTitle(it.productLine || name, it.description).toLowerCase().includes(q) ||
         it.code.toLowerCase().includes(q) ||
         it.components.some(
           (c) => c.code.toLowerCase().includes(q) || c.label.toLowerCase().includes(q),
         ),
     );
-  }, [items, search]);
+  }, [items, name, search]);
 
   // Stats (over the full set, not filtered)
   const totalQty = items.reduce((s, it) => s + it.qtyAvailable, 0);
@@ -54,7 +55,7 @@ export function InventoryDetail({
     const rowsHtml = filtered
       .map(
         (it) => `<tr>
-          <td><strong>${it.description || "—"}</strong></td>
+          <td><strong>${formatProductTitle(it.productLine || name, it.description) || "—"}</strong></td>
           <td>${it.code || "—"}</td>
           <td>${it.components.map((c) => c.code).join(" + ") || "—"}</td>
           <td class="num">${it.qtyAvailable}</td>
@@ -79,7 +80,7 @@ export function InventoryDetail({
 </style></head><body>
 <header><div class="brand">Wildtouch JMS — Inventory</div>
 <div class="sub">${name} · ${filtered.length} products · Total Qty Available: ${totalQty.toLocaleString()}</div></header>
-<table><thead><tr><th>Product Description</th><th>Finished Code</th><th>Components</th><th style="text-align:right">Qty Available</th></tr></thead>
+<table><thead><tr><th>Product Title</th><th>Finished Code</th><th>Components</th><th style="text-align:right">Qty Available</th></tr></thead>
 <tbody>${rowsHtml}</tbody></table>
 </body></html>`;
     const win = window.open("", "_blank", "width=1000,height=700");
@@ -175,7 +176,7 @@ export function InventoryDetail({
             <thead>
               <tr className="border-b border-border/30 bg-muted/20">
                 <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-12">#</th>
-                <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Product Description</th>
+                <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Product Title</th>
                 <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Finished Code</th>
                 <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Components</th>
                 <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Qty Available</th>
@@ -214,7 +215,7 @@ export function InventoryDetail({
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 border border-primary/15">
                             <Boxes className="h-4 w-4 text-primary" />
                           </div>
-                          <p className="text-sm font-medium">{it.description || "—"}</p>
+                          <p className="text-sm font-medium">{formatProductTitle(it.productLine || name, it.description) || "—"}</p>
                         </div>
                       </td>
 

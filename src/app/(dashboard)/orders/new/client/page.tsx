@@ -11,25 +11,32 @@ import {
   MapPin,
   Loader2,
   Building2,
+  ContactRound,
+  RadioTower,
+  X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import { StepNav } from "@/components/orders/step-nav";
 import { useOrderDraft } from "@/lib/store/order-draft";
 import { useAppStore, type Client } from "@/lib/store/app-store";
+import { useAgents, type Agent } from "@/lib/hooks/use-agents";
+import { ORDER_SOURCE_OPTIONS, type OrderSource } from "@/lib/order-source";
 
 function addressOf(c: Client): string {
   if (c.invoiceAddressFull?.trim()) return c.invoiceAddressFull;
-  return [c.address, c.city].filter(Boolean).join(", ");
+  return [c.address, c.city, c.region, c.postcode].filter(Boolean).join(", ");
 }
 
 export default function ClientStepPage() {
   const { draft, patchDraft } = useOrderDraft();
   const { clients, clientsLoading } = useAppStore();
+  const { agents, loading: agentsLoading } = useAgents();
   const [search, setSearch] = useState("");
+  const [agentSearch, setAgentSearch] = useState("");
+  const backHref = draft.isBackOrder ? "/orders/new/planogram" : "/orders/new/inventory";
 
   const selected = useMemo(
     () => clients.find((c) => c.id === draft.client?.clientId) ?? null,
@@ -47,20 +54,49 @@ export default function ClientStepPage() {
     );
   }, [clients, search]);
 
+  const filteredAgents = useMemo(() => {
+    const q = agentSearch.trim().toLowerCase();
+    if (!q) return agents;
+    return agents.filter((agent) =>
+      [agent.name, agent.id, agent.city, agent.email].some((value) => value?.toLowerCase().includes(q)),
+    );
+  }, [agents, agentSearch]);
+
+  const agentSnapshot = (agent: Agent) => ({
+    agentId: agent.id,
+    name: agent.name,
+    email: agent.email ?? "",
+    contactNumber: agent.contactNumber ?? "",
+    city: agent.city ?? "",
+  });
+
   const selectClient = (c: Client) => {
     const invoiceAddress = addressOf(c);
     const deliveryAddress = c.deliveryAddress?.trim() || invoiceAddress;
+    const assignedAgent = agents.find(
+      (agent) => agent.id === c.agentId || (!!c.agentName && agent.name.toLowerCase() === c.agentName.toLowerCase()),
+    );
     patchDraft({
       client: {
         clientId: c.id,
         name: c.name,
+        contactName: c.primaryContactName || c.mainBuyerNames || c.otherContactAndPosition || "",
+        companyName: c.motherCompany || c.name,
         email: c.email ?? "",
         contactNumber: c.contactNumber ?? "",
         invoiceAddress,
         deliveryAddress,
+        brandCardImage: c.brandCardImage ?? "",
+        barcodeImage: c.barcodeImage ?? "",
         vatRate: c.vatRate ?? 0,
       },
+      agent: assignedAgent ? agentSnapshot(assignedAgent) : null,
     });
+  };
+
+  const selectAgent = (agent: Agent) => {
+    patchDraft({ agent: agentSnapshot(agent) });
+    setAgentSearch("");
   };
 
   const setField = (key: "invoiceAddress" | "deliveryAddress", value: string) => {
@@ -108,7 +144,7 @@ export default function ClientStepPage() {
             </div>
           )}
         </motion.div>
-        <StepNav backHref="/orders/new/inventory" nextDisabled nextLabel="Next" />
+        <StepNav backHref={backHref} nextDisabled nextLabel="Next" />
       </div>
     );
   }
@@ -134,6 +170,95 @@ export default function ClientStepPage() {
         </Button>
       </div>
 
+      {/* Assigned agent */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.04 }}
+        className="rounded-2xl border border-border/40 bg-card/70 glass p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <ContactRound className="h-4 w-4 text-primary" />
+          <div>
+            <h3 className="text-sm font-semibold">Agent for this order</h3>
+            <p className="text-[11px] text-muted-foreground">Select the sales agent responsible for this order.</p>
+          </div>
+        </div>
+
+        {draft.agent?.agentId ? (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">{draft.agent.name}</p>
+              <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                <span className="font-mono">{draft.agent.agentId}</span>
+                {draft.agent.city && <span>{draft.agent.city}</span>}
+                {draft.agent.email && <span>{draft.agent.email}</span>}
+                {draft.agent.contactNumber && <span>{draft.agent.contactNumber}</span>}
+              </div>
+            </div>
+            <Button type="button" size="sm" variant="outline" className="shrink-0 gap-1.5 rounded-xl" onClick={() => patchDraft({ agent: null })}>
+              <X className="h-3.5 w-3.5" /> Change
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="relative max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+              <Input
+                placeholder="Search agents by name, ID, city or email…"
+                value={agentSearch}
+                onChange={(event) => setAgentSearch(event.target.value)}
+                className="rounded-xl border-border/40 bg-muted/20 pl-9"
+              />
+            </div>
+            {agentsLoading ? (
+              <div className="flex items-center gap-2 py-5 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading agents…
+              </div>
+            ) : filteredAgents.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-border/40 px-4 py-5 text-center text-sm text-muted-foreground">No agents match your search.</p>
+            ) : (
+              <div className="grid max-h-56 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                {filteredAgents.map((agent) => (
+                  <button
+                    key={agent.id}
+                    type="button"
+                    onClick={() => selectAgent(agent)}
+                    className="rounded-xl border border-border/40 bg-card/60 px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-accent/30"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-semibold">{agent.name}</p>
+                      <Badge variant="outline" className="shrink-0 font-mono text-[10px]">{agent.id}</Badge>
+                    </div>
+                    <p className="mt-1 truncate text-[11px] text-muted-foreground">{[agent.city, agent.email].filter(Boolean).join(" · ") || "No additional info"}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </motion.div>
+
+      {/* How this order arrived. */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.06 }}
+        className="rounded-2xl border border-border/40 bg-card/70 glass p-6 space-y-3">
+        <div className="flex items-center gap-2">
+          <RadioTower className="h-4 w-4 text-primary" />
+          <div>
+            <h3 className="text-sm font-semibold">Source of Order</h3>
+            <p className="text-[11px] text-muted-foreground">Select how this order was received.</p>
+          </div>
+        </div>
+        <div className="max-w-sm space-y-1.5">
+          <Label htmlFor="order-source" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source of Order</Label>
+          <select
+            id="order-source"
+            value={draft.orderSource}
+            onChange={(event) => patchDraft({ orderSource: event.target.value as OrderSource | "" })}
+            className="h-10 w-full rounded-xl border border-border/40 bg-muted/20 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            <option value="">Select source…</option>
+            {ORDER_SOURCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </div>
+      </motion.div>
+
       {/* Addresses */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
         className="rounded-2xl border border-border/40 bg-card/70 glass p-6 space-y-5">
@@ -156,7 +281,28 @@ export default function ClientStepPage() {
         <p className="text-[11px] text-muted-foreground">Pre-filled from the client record — edit if this order ships elsewhere.</p>
       </motion.div>
 
-      <StepNav backHref="/orders/new/inventory" nextHref="/orders/new/review" nextDisabled={!c.invoiceAddress?.trim()} />
+      {/* Order references used on the order and planogram PDF. */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.04 }}
+        className="rounded-2xl border border-border/40 bg-card/70 glass p-6 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold">PO &amp; reference numbers</h3>
+          <p className="text-[11px] text-muted-foreground">Optional identifiers printed on this order&rsquo;s planogram PDF.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="order-po-number" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">PO Number</Label>
+            <Input id="order-po-number" value={draft.poNumber} onChange={(event) => patchDraft({ poNumber: event.target.value })}
+              placeholder="Enter purchase order number" className="rounded-xl border-border/40 bg-muted/20" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="order-reference-number" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reference Number</Label>
+            <Input id="order-reference-number" value={draft.referenceNumber} onChange={(event) => patchDraft({ referenceNumber: event.target.value })}
+              placeholder="Enter reference number" className="rounded-xl border-border/40 bg-muted/20" />
+          </div>
+        </div>
+      </motion.div>
+
+      <StepNav backHref={backHref} nextHref="/orders/new/review" nextDisabled={!c.invoiceAddress?.trim() || !draft.orderSource} />
     </div>
   );
 }

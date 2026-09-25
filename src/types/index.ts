@@ -7,10 +7,10 @@ export type UserRole =
   | "agent";
 
 export type AccountStatus =
-  | "active"
-  | "proforma"
-  | "on_hold"
-  | "bad_credit";
+  | "new_client"
+  | "potential_client"
+  | "previous_client"
+  | "existing_client";
 
 export type OrderStatus =
   | "received"

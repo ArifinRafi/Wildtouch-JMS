@@ -28,7 +28,13 @@ export default auth((req) => {
   // Viewer role is read-only: block every mutating API request (create/edit/delete).
   // This is the authoritative backend guard; the UI shows a friendly message on the 403.
   const role = (req.auth?.user as { role?: string } | undefined)?.role;
-  if (role === "viewer" && pathname.startsWith("/api") && !READ_METHODS.has(req.method)) {
+  const isInventoryMutation = pathname === "/api/inventory" || pathname.startsWith("/api/inventory/");
+  if (
+    role === "viewer" &&
+    pathname.startsWith("/api") &&
+    !READ_METHODS.has(req.method) &&
+    !isInventoryMutation
+  ) {
     return NextResponse.json(
       { error: VIEWER_BLOCK_MESSAGE },
       { status: 403, headers: { "x-role-blocked": "viewer" } },

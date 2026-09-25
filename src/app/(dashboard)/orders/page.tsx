@@ -18,10 +18,14 @@ import {
   Eye,
   Receipt,
   CalendarDays,
+  CalendarClock,
   X,
   ClipboardList,
+  Search,
+  ContactRound,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -34,6 +38,22 @@ import { cn } from "@/lib/utils";
 import { useOrders, type Order } from "@/lib/store/orders-store";
 import { useRole } from "@/lib/hooks/use-role";
 import { PartialInvoiceDialog } from "@/components/orders/partial-invoice-dialog";
+import { formatCurrency, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
+import { useAgents, type Agent } from "@/lib/hooks/use-agents";
+import { orderSourceLabel } from "@/lib/order-source";
+
+type CurrencyTotals = Record<SupportedCurrency, number>;
+
+function emptyCurrencyTotals(): CurrencyTotals {
+  return { GBP: 0, EUR: 0 };
+}
+
+function formatCurrencyTotals(totals: CurrencyTotals): string {
+  const populated = (Object.entries(totals) as [SupportedCurrency, number][])
+    .filter(([, amount]) => amount !== 0)
+    .map(([currency, amount]) => formatCurrency(amount, currency));
+  return populated.length ? populated.join(" · ") : formatCurrency(0, "GBP");
+}
 
 const STATUS_STYLE: Record<string, string> = {
   received: "bg-blue-500/10 border-blue-500/25 text-blue-600 dark:text-blue-400",
@@ -71,12 +91,16 @@ function dateKey(iso: string | null): string {
 
 export default function OrdersPage() {
   const { orders, loading, deleteOrder, refresh } = useOrders();
+  const { agents } = useAgents();
   const { isAdmin } = useRole();
   const router = useRouter();
   const [toDelete, setToDelete] = useState<Order | null>(null);
   const [partialFor, setPartialFor] = useState<Order | null>(null);
   const [packingFor, setPackingFor] = useState<Order | null>(null);
-  const [dateFilter, setDateFilter] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [search, setSearch] = useState("");
+  const [agentSearch, setAgentSearch] = useState("");
 
   // Re-fetch whenever the Orders page is opened so newly confirmed orders
   // appear without a manual browser refresh.
@@ -89,37 +113,72 @@ export default function OrdersPage() {
     router.push(`/orders/${o.id}/packing-list${withPod ? "" : "?pod=0"}`);
   };
 
-  const filtered = useMemo(
-    () => (dateFilter ? orders.filter((o) => dateKey(o.createdAt) === dateFilter) : orders),
-    [orders, dateFilter],
-  );
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const agentQuery = agentSearch.trim().toLowerCase();
+    return orders.filter((order) => {
+      const orderDate = dateKey(order.createdAt);
+      const inDateRange = (!startDate || orderDate >= startDate) && (!endDate || orderDate <= endDate);
+      const matchesSearch = !q || [
+        order.orderNumber,
+        order.client?.name,
+        order.planogram?.name,
+        order.status,
+        order.agent?.name,
+        orderSourceLabel(order.orderSource),
+        ...order.lineItems.flatMap((line) => [line.code, line.description]),
+      ].some((value) => value?.toLowerCase().includes(q));
+      const matchesAgent = !agentQuery || order.agent?.name?.toLowerCase().includes(agentQuery)
+        || order.agent?.agentId?.toLowerCase().includes(agentQuery);
+      return inDateRange && matchesSearch && matchesAgent;
+    });
+  }, [orders, startDate, endDate, search, agentSearch]);
+
+  const hasFilters = Boolean(startDate || endDate || search.trim() || agentSearch.trim());
+  const clearFilters = () => {
+    setStartDate("");
+    setEndDate("");
+    setSearch("");
+    setAgentSearch("");
+  };
+
+  const dateRangeText = startDate && endDate
+    ? `${formatDate(startDate)} – ${formatDate(endDate)}`
+    : startDate
+      ? `From ${formatDate(startDate)}`
+      : endDate
+        ? `Up to ${formatDate(endDate)}`
+        : "All dates";
 
   const stats = useMemo(() => {
-    const total = orders.length;
-    const active = orders.filter(
+    const total = filtered.length;
+    const active = filtered.filter(
       (o) => !["delivered", "archived"].includes(o.status),
     ).length;
-    const dispatched = orders.filter((o) => o.status === "dispatched").length;
-    const value = orders.reduce((s, o) => s + (o.total || 0), 0);
+    const dispatched = filtered.filter((o) => o.status === "dispatched").length;
+    const value = emptyCurrencyTotals();
+    for (const order of filtered) value[normalizeCurrency(order.currency)] += order.total || 0;
     return { total, active, dispatched, value };
-  }, [orders]);
+  }, [filtered]);
 
   // Invoice totals for the current view (respects the date filter above):
   //  - invoiceGenerated: full invoice value of these orders (each order = one invoice)
   //  - partialGenerated: amount billed via partial invoices
   //  - outstanding: remaining un-invoiced balance on orders that used partial invoicing (0 otherwise)
   const invoiceSummary = useMemo(() => {
-    let invoiceGenerated = 0, partialGenerated = 0, outstanding = 0;
+    const invoiceGenerated = emptyCurrencyTotals();
+    const partialGenerated = emptyCurrencyTotals();
+    const outstanding = emptyCurrencyTotals();
     for (const o of filtered) {
       const total = o.total || 0;
       const partial = o.amountInvoiced || 0;
-      invoiceGenerated += total;
-      partialGenerated += partial;
-      if (partial > 0) outstanding += Math.max(0, total - partial);
+      const currency = normalizeCurrency(o.currency);
+      invoiceGenerated[currency] += total;
+      partialGenerated[currency] += partial;
+      if (partial > 0) outstanding[currency] += Math.max(0, total - partial);
     }
     return { invoiceGenerated, partialGenerated, outstanding };
   }, [filtered]);
-  const gbp = (n: number) => `£${(n || 0).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const confirmDelete = useCallback(() => {
     if (!toDelete) return;
@@ -144,31 +203,14 @@ export default function OrdersPage() {
           <p className="text-sm text-muted-foreground mt-1">
             Create and track customer orders ·{" "}
             <span className="font-semibold text-primary">
-              {dateFilter ? `${filtered.length} on ${formatDate(dateFilter)}` : `${orders.length} total`}
+              {hasFilters ? `${filtered.length} of ${orders.length} orders` : `${orders.length} total`}
             </span>
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Date filter */}
-          <div className="relative flex items-center">
-            <CalendarDays className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-muted-foreground" />
-            <input
-              type="date"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              title="Show orders for a specific date"
-              className="h-9 rounded-xl border border-border/60 bg-card pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-            />
-          </div>
-          {dateFilter && (
-            <button
-              onClick={() => setDateFilter("")}
-              title="Clear date filter"
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-card text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
+          <Link href="/back-orders" className={buttonVariants({ variant: "outline", className: "gap-2 rounded-xl" })}>
+            <CalendarClock className="h-4 w-4" /> Back Orders
+          </Link>
           <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
             <Link href="/orders/new">
               <Button className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 hover:from-primary/90 hover:to-indigo-500/90 shadow-lg shadow-primary/20 text-white font-semibold">
@@ -177,6 +219,64 @@ export default function OrdersPage() {
               </Button>
             </Link>
           </motion.div>
+        </div>
+      </motion.div>
+
+      {/* Date range, order search and agent filter */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.03 }}
+        className="space-y-4 rounded-2xl border border-border/40 bg-card/70 p-4 glass"
+      >
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1.5">
+            <label htmlFor="orders-start-date" className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Start Date</label>
+            <div className="relative">
+              <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                id="orders-start-date"
+                type="date"
+                value={startDate}
+                max={endDate || undefined}
+                onChange={(event) => setStartDate(event.target.value)}
+                className="h-10 rounded-xl border border-border/60 bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="orders-end-date" className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">End Date</label>
+            <div className="relative">
+              <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                id="orders-end-date"
+                type="date"
+                value={endDate}
+                min={startDate || undefined}
+                onChange={(event) => setEndDate(event.target.value)}
+                className="h-10 rounded-xl border border-border/60 bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+          </div>
+          <p className="pb-2 text-xs font-medium text-muted-foreground">{dateRangeText}</p>
+          {hasFilters && (
+            <Button type="button" variant="outline" className="h-10 gap-1.5 rounded-xl sm:ml-auto" onClick={clearFilters}>
+              <X className="h-3.5 w-3.5" /> Clear Filters
+            </Button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search order number, client, product or planogram…"
+              className="rounded-xl border-border/40 bg-muted/20 pl-9"
+            />
+          </div>
+          <AgentSearchInput value={agentSearch} agents={agents} onChange={setAgentSearch} />
         </div>
       </motion.div>
 
@@ -191,7 +291,7 @@ export default function OrdersPage() {
           { icon: Package, label: "Total Orders", value: stats.total.toLocaleString(), color: "text-primary bg-primary/10 border-primary/20" },
           { icon: Clock, label: "Active", value: stats.active.toLocaleString(), color: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20" },
           { icon: Truck, label: "Dispatched", value: stats.dispatched.toLocaleString(), color: "text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/20" },
-          { icon: CheckCircle2, label: "Total Value", value: `£${stats.value.toLocaleString()}`, color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+          { icon: CheckCircle2, label: "Total Value", value: formatCurrencyTotals(stats.value), color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
         ].map((chip, i) => (
           <motion.div
             key={chip.label}
@@ -223,12 +323,12 @@ export default function OrdersPage() {
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 border border-primary/15 mb-4">
               <ShoppingCart className="h-7 w-7 text-primary" />
             </div>
-            {dateFilter ? (
+            {hasFilters ? (
               <>
-                <p className="text-base font-semibold">No orders on {formatDate(dateFilter)}</p>
-                <p className="text-sm text-muted-foreground mt-1 mb-5 max-w-sm">Try a different date, or clear the filter to see all orders.</p>
-                <Button variant="outline" className="gap-1.5 rounded-xl border-border/40" onClick={() => setDateFilter("")}>
-                  <X className="h-3.5 w-3.5" /> Clear date
+                <p className="text-base font-semibold">No orders match these filters</p>
+                <p className="text-sm text-muted-foreground mt-1 mb-5 max-w-sm">Try another date range, search term or agent.</p>
+                <Button variant="outline" className="gap-1.5 rounded-xl border-border/40" onClick={clearFilters}>
+                  <X className="h-3.5 w-3.5" /> Clear filters
                 </Button>
               </>
             ) : (
@@ -247,12 +347,14 @@ export default function OrdersPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[940px] border-collapse">
+            <table className="w-full min-w-[1140px] border-collapse">
               <thead>
                 <tr className="border-b border-border/30 bg-muted/20">
                   <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-12">#</th>
                   <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Order</th>
                   <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Client</th>
+                  <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Agent</th>
+                  <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Source of Order</th>
                   <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Date</th>
                   <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Items</th>
                   <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total</th>
@@ -289,13 +391,20 @@ export default function OrdersPage() {
                         <p className="text-sm font-medium">{o.client?.name || "—"}</p>
                       </td>
                       <td className="px-5 py-3 align-middle">
+                        <p className="text-sm font-medium">{o.agent?.name || "—"}</p>
+                        {o.agent?.agentId && <p className="mt-0.5 text-[10px] font-mono text-muted-foreground">{o.agent.agentId}</p>}
+                      </td>
+                      <td className="px-5 py-3 align-middle">
+                        <Badge variant="outline" className="text-[10px] font-medium">{orderSourceLabel(o.orderSource)}</Badge>
+                      </td>
+                      <td className="px-5 py-3 align-middle">
                         <span className="text-xs text-muted-foreground">{formatDate(o.createdAt)}</span>
                       </td>
                       <td className="px-5 py-3 align-middle text-right tabular-nums text-sm">
                         {o.lineItems?.length ?? 0}
                       </td>
                       <td className="px-5 py-3 align-middle text-right tabular-nums text-sm font-semibold">
-                        £{(o.total || 0).toLocaleString()}
+                        {formatCurrency(o.total || 0, o.currency)}
                         {(o.amountInvoiced ?? 0) > 0 && (o.total || 0) > 0 && (
                           <p className={cn(
                             "text-[10px] font-semibold mt-0.5",
@@ -305,7 +414,7 @@ export default function OrdersPage() {
                           )}>
                             {(o.amountInvoiced ?? 0) >= (o.total || 0)
                               ? "Fully invoiced"
-                              : `£${(o.amountInvoiced ?? 0).toFixed(2)} invoiced · £${Math.max(0, (o.total || 0) - (o.amountInvoiced ?? 0)).toFixed(2)} left`}
+                              : `${formatCurrency(o.amountInvoiced ?? 0, o.currency)} invoiced · ${formatCurrency(Math.max(0, (o.total || 0) - (o.amountInvoiced ?? 0)), o.currency)} left`}
                           </p>
                         )}
                       </td>
@@ -385,7 +494,7 @@ export default function OrdersPage() {
               <Receipt className="h-4 w-4 text-primary" /> Invoice Summary
             </h3>
             <span className="text-xs text-muted-foreground">
-              {dateFilter ? formatDate(dateFilter) : "All dates"} · {filtered.length} order{filtered.length === 1 ? "" : "s"}
+              {dateRangeText} · {filtered.length} order{filtered.length === 1 ? "" : "s"}
             </span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -396,7 +505,7 @@ export default function OrdersPage() {
             ].map((t) => (
               <div key={t.label} className={cn("rounded-xl border px-4 py-3", t.color)}>
                 <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">{t.label}</p>
-                <p className="text-2xl font-black tabular-nums mt-1">{gbp(t.value)}</p>
+                <p className="text-2xl font-black tabular-nums mt-1">{formatCurrencyTotals(t.value)}</p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">{t.sub}</p>
               </div>
             ))}
@@ -456,7 +565,7 @@ export default function OrdersPage() {
             <div className="rounded-xl border border-border/40 bg-muted/20 px-4 py-3">
               <p className="text-sm font-semibold font-mono">{toDelete.orderNumber}</p>
               <p className="text-[11px] text-muted-foreground mt-1">
-                {toDelete.client?.name || "No client"} · £{(toDelete.total || 0).toLocaleString()}
+                {toDelete.client?.name || "No client"} · {formatCurrency(toDelete.total || 0, toDelete.currency)}
               </p>
             </div>
           )}
@@ -468,6 +577,70 @@ export default function OrdersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function AgentSearchInput({
+  value,
+  agents,
+  onChange,
+}: {
+  value: string;
+  agents: Agent[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const q = value.trim().toLowerCase();
+  const suggestions = useMemo(
+    () => agents
+      .filter((agent) => !q || [agent.name, agent.id, agent.city, agent.email].some((field) => field?.toLowerCase().includes(q)))
+      .slice(0, 10),
+    [agents, q],
+  );
+
+  return (
+    <div className="relative">
+      <ContactRound className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+      <Input
+        value={value}
+        onChange={(event) => { onChange(event.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 180)}
+        placeholder="Search orders by agent name or ID…"
+        autoComplete="off"
+        className="rounded-xl border-border/40 bg-muted/20 pl-9 pr-9"
+      />
+      {value && (
+        <button
+          type="button"
+          title="Clear agent filter"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => { onChange(""); setOpen(false); }}
+          className="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {open && suggestions.length > 0 && (
+        <div className="absolute z-40 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-border/40 bg-popover p-1 shadow-xl">
+          {suggestions.map((agent) => (
+            <button
+              key={agent.id}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => { onChange(agent.name); setOpen(false); }}
+              className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left hover:bg-accent/60"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium">{agent.name}</span>
+                <span className="block truncate text-[10px] text-muted-foreground">{[agent.city, agent.email].filter(Boolean).join(" · ")}</span>
+              </span>
+              <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{agent.id}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

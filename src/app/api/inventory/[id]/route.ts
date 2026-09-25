@@ -1,14 +1,18 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isValidObjectId } from "mongoose";
 import { connectDB } from "@/lib/db";
-import { requireAdmin, isResponse } from "@/lib/authz";
+import { requireAdmin, requireInventoryWriteAccess, isResponse } from "@/lib/authz";
 import { Component, serializeComponent } from "@/lib/models/Component";
 import { logActivity } from "@/lib/activity";
+import { productNameOnly } from "@/lib/product-title";
 
 export async function PATCH(
   request: NextRequest,
   ctx: RouteContext<"/api/inventory/[id]">,
 ) {
+  const gate = await requireInventoryWriteAccess();
+  if (isResponse(gate)) return gate;
+
   const { id } = await ctx.params;
   if (!isValidObjectId(id)) {
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
@@ -18,7 +22,19 @@ export async function PATCH(
   const body = await request.json();
 
   const patch: Record<string, unknown> = {};
-  if (body.description !== undefined) patch.description = String(body.description).trim();
+  if (body.productLine !== undefined) {
+    const productLine = String(body.productLine).trim();
+    if (!productLine) return NextResponse.json({ error: "productLine is required" }, { status: 400 });
+    patch.productLine = productLine;
+  }
+  if (body.description !== undefined) {
+    const description = productNameOnly(
+      typeof patch.productLine === "string" ? patch.productLine : "",
+      body.description,
+    );
+    if (!description) return NextResponse.json({ error: "description is required" }, { status: 400 });
+    patch.description = description;
+  }
   if (body.code !== undefined) patch.code = String(body.code).trim();
   if (body.qtyAvailable !== undefined) {
     patch.qtyAvailable = Math.max(0, Number(body.qtyAvailable) || 0);
