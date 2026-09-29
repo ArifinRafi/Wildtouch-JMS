@@ -27,9 +27,19 @@ const InvoiceClientSchema = new Schema(
   { _id: false },
 );
 
+const InvoiceCommentSchema = new Schema(
+  {
+    text: { type: String, required: true, trim: true, maxlength: 2000 },
+    createdAt: { type: Date, required: true },
+    createdBy: { type: String, default: "" },
+  },
+  { _id: false },
+);
+
 const InvoiceSchema = new Schema(
   {
     invoiceNumber: { type: String, required: true, unique: true },
+    sourceProformaId: { type: String, unique: true, sparse: true },
     orderId: { type: Schema.Types.ObjectId, ref: "Order" },
     orderNumber: { type: String, default: "" },
     client: { type: InvoiceClientSchema, default: () => ({}) },
@@ -42,7 +52,8 @@ const InvoiceSchema = new Schema(
     vat: { type: Number, default: 0, min: 0 },
     total: { type: Number, default: 0, min: 0 },
     currency: { type: String, default: "GBP" },
-    status: { type: String, enum: ["issued", "paid", "void"], default: "issued" },
+    status: { type: String, enum: ["issued", "remittance", "paid", "partial_payment_outstanding", "void"], default: "issued" },
+    comments: { type: [InvoiceCommentSchema], default: [] },
     /** Partial (installment) invoice against the order's total. */
     isPartial: { type: Boolean, default: false },
     /** The amount this partial invoice charges now. */
@@ -81,6 +92,7 @@ export function serializeInvoice(doc: {
   total?: number;
   currency?: string;
   status?: string;
+  comments?: Array<{ text?: string; createdAt?: Date | string; createdBy?: string }> | null;
   isPartial?: boolean;
   paymentAmount?: number;
   previouslyPaid?: number;
@@ -102,6 +114,11 @@ export function serializeInvoice(doc: {
     total: doc.total ?? 0,
     currency: doc.currency ?? "GBP",
     status: doc.status ?? "issued",
+    comments: (doc.comments ?? []).map((comment) => ({
+      text: comment.text ?? "",
+      createdAt: comment.createdAt ?? null,
+      createdBy: comment.createdBy ?? "",
+    })),
     isPartial: doc.isPartial ?? false,
     paymentAmount: doc.paymentAmount ?? 0,
     previouslyPaid: doc.previouslyPaid ?? 0,

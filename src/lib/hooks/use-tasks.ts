@@ -9,6 +9,8 @@ export interface Task {
   id: string;
   date: string;
   employeeName: string;
+  clientId: string;
+  clientName: string;
   taskName: string;
   note: string;
   status: TaskStatus;

@@ -33,8 +33,8 @@ export default function InventoryStepPage() {
   const loading = invLoading || prodLoading;
 
   useEffect(() => {
-    if (draft.isBackOrder) router.replace("/orders/new/client");
-  }, [draft.isBackOrder, router]);
+    if (draft.isBackOrder || draft.isProforma) router.replace(draft.isProforma ? "/orders/new/client?proforma=1" : "/orders/new/client");
+  }, [draft.isBackOrder, draft.isProforma, router]);
 
   // Map: normalized product name -> Product (for BOM lookup)
   const productByName = useMemo(() => {

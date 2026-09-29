@@ -8,6 +8,8 @@ const TaskSchema = new Schema(
   {
     date: { type: String, default: "" },
     employeeName: { type: String, default: "" },
+    clientId: { type: String, default: "" },
+    clientName: { type: String, default: "" },
     taskName: { type: String, default: "" },
     note: { type: String, default: "" },
     status: { type: String, enum: TASK_STATUS, default: "pending" },
@@ -26,6 +28,8 @@ export function serializeTask(doc: {
   _id: unknown;
   date?: string;
   employeeName?: string;
+  clientId?: string;
+  clientName?: string;
   taskName?: string;
   note?: string;
   status?: string;
@@ -37,6 +41,8 @@ export function serializeTask(doc: {
     id: String(doc._id),
     date: doc.date ?? "",
     employeeName: doc.employeeName ?? "",
+    clientId: doc.clientId ?? "",
+    clientName: doc.clientName ?? "",
     taskName: doc.taskName ?? "",
     note: doc.note ?? "",
     status: (doc.status as (typeof TASK_STATUS)[number]) ?? "pending",

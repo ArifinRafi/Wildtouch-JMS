@@ -9,7 +9,7 @@ export interface Agent {
   city: string;
   contactNumber: string;
   email: string;
-  referredPoints: number;
+  commissionRate: number;
 }
 
 export type NewAgentInput = Omit<Agent, "id">;

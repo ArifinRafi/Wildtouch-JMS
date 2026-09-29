@@ -90,7 +90,7 @@ const SECTIONS: Section[] = [
     title: "Dashboard",
     icon: LayoutDashboard,
     intro:
-      "The home screen. It shows live business numbers pulled from the database: active orders, active clients, catalogue size, month-to-date revenue, a 7-day revenue chart, the orders pipeline and low-stock alerts.",
+      "The home screen. The Digital Whiteboard is followed by simple Pending Tasks and Design work in Progress totals, plus the orders pipeline, admin-only revenue chart and low-stock alerts.",
     permissions: [
       { action: "View the dashboard", roles: ["admin", "manager", "viewer"] },
       { action: "Create New Order (top-right button)", roles: ["admin", "manager"] },
@@ -227,7 +227,7 @@ const SECTIONS: Section[] = [
     title: "Task Manager",
     icon: ListChecks,
     intro:
-      "Daily task lists per employee. Pick a date, add tasks with an employee, a note, status and priority. Tasks sort High → Medium → Low, and each row's note is editable inline (saves when you click away).",
+      "Daily task lists per employee and client. Pick a date, select the associated existing client, then add the task with an employee, note, status and priority. Tasks sort High → Medium → Low, and each row's note is editable inline.",
     permissions: [
       { action: "View tasks", roles: ["admin", "manager", "viewer"] },
       { action: "Add, complete, edit and delete tasks", roles: ["admin", "manager"] },
@@ -235,7 +235,7 @@ const SECTIONS: Section[] = [
     steps: [
       { heading: "To assign a task", items: [
         "Pick the date with the calendar (top-right).",
-        "Choose the employee (searchable), type the task and an optional note, set status & priority, press Add Task.",
+        "Choose the employee and the existing client associated with the task, type the task and an optional note, set status & priority, then press Add Task.",
         "Tick the circle to mark complete; use the dropdown to change priority any time.",
       ]},
     ],
@@ -280,7 +280,7 @@ const SECTIONS: Section[] = [
     title: "Design Tracker",
     icon: PenTool,
     intro:
-      "The pipeline for new component designs. Each design moves through Stages: New Design Request → Research → Feedback → New Design Template. Reaching the final stage marks it finished and sends it to River as an orderable component. Moving a design backwards requires a note, and every stage change is recorded in the History column.",
+      "The pipeline for new component designs. Each design moves through: New concept idea → Research → Template → Feedback to client → Feedback from client → Feedback to river → Feedback from river → CAD → Metal Cut → Sample. Selecting Template sends it to River as an orderable component; Sample marks the tracker item completed. Moving a design backwards requires a note, and every stage change is recorded in the History column.",
     permissions: [
       { action: "View designs", roles: ["admin", "manager", "viewer"] },
       { action: "Add / edit designs & change stages", roles: ["admin", "manager"] },
@@ -288,9 +288,10 @@ const SECTIONS: Section[] = [
     ],
     steps: [
       { heading: "To track a design", items: [
-        "Add Design — the row opens like a spreadsheet: image, name, client, category, notes, code sheet, brochure and Ordered columns.",
+        "Add Design — the row opens like a spreadsheet: image, name, client, category, notes, code sheet, brochure, Ordered and Alert date columns.",
+        "Set an Alert date to show the live design in the header Notifications from that date until it is completed or the date is cleared.",
         "Move the Stage dropdown forward as work progresses.",
-        "Choosing 'New Design Template → River' finishes it — River gets a New Design notification.",
+        "Choosing 'Template → River' sends it to River and creates a New Design notification.",
         "Moving back a stage asks for a mandatory reason, saved to the row's History.",
       ]},
     ],
@@ -301,7 +302,7 @@ const SECTIONS: Section[] = [
     title: "River",
     icon: Waves,
     intro:
-      "Purchase orders to the vendor River, who makes new components. Rows edit inline like a spreadsheet: order number, component (searchable from completed designs), quantities, £/¥ values, priority, shipment method and a dated notes log. Receiving stock — fully or partially — adds it straight into Inventory.",
+      "Purchase orders to the vendor River, who makes new components. Rows edit inline like a spreadsheet: order number, component, quantities, £/¥ values, priority, Road/Air/Sea shipment details, payment status and a dated notes log. Receiving stock — fully or partially — adds it straight into Inventory.",
     permissions: [
       { action: "View River orders", roles: ["admin", "manager", "viewer"] },
       { action: "Add / edit orders, receive stock", roles: ["admin", "manager"] },
@@ -310,7 +311,9 @@ const SECTIONS: Section[] = [
     steps: [
       { heading: "To order a new design", items: [
         "The New Design button shows finished designs waiting to be ordered — press Order it to pre-fill a row.",
-        "Fill quantity, values, priority and shipment, then Save.",
+        "Fill quantity, values and priority. In Shipment, select Road, Air or Sea and enter the shipment quantity and date, then Save.",
+        "Set the Paid column explicitly; use Unpaid only to show every row not selected as Paid.",
+        "Download Excel exports the full River table with the download date, time and complete order details.",
       ]},
       { heading: "To receive stock", items: [
         "Use Complete (everything) or Partial (a quantity) on the row.",
@@ -324,7 +327,7 @@ const SECTIONS: Section[] = [
     id: "agents",
     title: "Agents",
     icon: UserCheck,
-    intro: "Sales agents with their contact details and referred points.",
+    intro: "Sales agents with their contact details, commission rates and database-linked order history. Each agent's Orders button shows the orders saved with that agent reference, including order number, date and amount.",
     permissions: [
       { action: "View agents", roles: ["admin", "manager", "viewer"] },
       { action: "Add / edit agents", roles: ["admin", "manager"] },
@@ -398,10 +401,17 @@ const SECTIONS: Section[] = [
     id: "shifts",
     title: "Shift Manager",
     icon: CalendarClock,
-    intro: "The staff shift rota, pinned at the bottom of the sidebar. Employee names from here also feed the Task Manager's employee search.",
+    intro: "Database-backed employee timesheets with a separate monthly shift editor for each employee. Records include date, start and finish times, calculated hours, lunch, extra hours, chargeable hours, notes and attendance. Employee names also feed the Task Manager's employee search.",
     permissions: [
       { action: "View shifts", roles: ["admin", "manager", "viewer"] },
       { action: "Manage shifts", roles: ["admin", "manager"] },
+    ],
+    steps: [
+      { heading: "To add or edit a shift", items: [
+        "Open Shift Editor and select an employee; each employee has a separate monthly timesheet.",
+        "Choose the date, start time, finish time and lunch time, then add optional extra hours, attendance and notes.",
+        "Hours and chargeable hours are calculated automatically and saved with the shift in the database.",
+      ]},
     ],
     shots: [{ src: "/manual/shifts.png", caption: "Shift Manager" }],
   },

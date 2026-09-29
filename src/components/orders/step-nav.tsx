@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useOrderDraft } from "@/lib/store/order-draft";
 
 export function StepNav({
   backHref,
@@ -23,13 +24,20 @@ export function StepNav({
   isLast?: boolean;
 }) {
   const router = useRouter();
+  const { draft } = useOrderDraft();
+  const withMode = (href: string) => {
+    if (!draft.isProforma || !href.startsWith("/orders/new/")) return href;
+    const params = new URLSearchParams({ proforma: "1" });
+    if (draft.editingProformaId) params.set("edit", draft.editingProformaId);
+    return `${href}?${params.toString()}`;
+  };
 
   const handleNext = async () => {
     if (onNext) {
       const ok = await onNext();
       if (ok === false) return;
     }
-    if (nextHref) router.push(nextHref);
+    if (nextHref) router.push(withMode(nextHref));
   };
 
   return (
@@ -38,7 +46,7 @@ export function StepNav({
         variant="outline"
         className="gap-2 rounded-xl border-border/40"
         disabled={!backHref}
-        onClick={() => backHref && router.push(backHref)}
+        onClick={() => backHref && router.push(withMode(backHref))}
       >
         <ArrowLeft className="h-4 w-4" /> Back
       </Button>

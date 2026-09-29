@@ -15,7 +15,9 @@ export async function PATCH(
   for (const k of ["name", "address", "city", "contactNumber", "email"]) {
     if (body[k] !== undefined) patch[k] = String(body[k]).trim();
   }
-  if (body.referredPoints !== undefined) patch.referredPoints = Math.max(0, Number(body.referredPoints) || 0);
+  if (body.commissionRate !== undefined) {
+    patch.commissionRate = Math.min(100, Math.max(0, Number(body.commissionRate) || 0));
+  }
 
   const updated = await Agent.findByIdAndUpdate(id, patch, { new: true }).lean();
   if (!updated) return NextResponse.json({ error: "not found" }, { status: 404 });

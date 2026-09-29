@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 import {
   Search,
   Plus,
@@ -10,10 +11,12 @@ import {
   ChevronDown,
   Pencil,
   Trash2,
-  Star,
+  Percent,
+  TrendingUp,
   Briefcase,
   AlertTriangle,
   Loader2,
+  ShoppingCart,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -33,34 +36,38 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useAgents, type Agent } from "@/lib/hooks/use-agents";
+import { formatCurrency } from "@/lib/currency";
 
-function ReferredPointsBadge({ points }: { points: number }) {
-  const tier =
-    points >= 15
-      ? { label: "Gold", cls: "bg-amber-500/10 border-amber-500/25 text-amber-600 dark:text-amber-400", dot: "bg-amber-500" }
-      : points >= 8
-        ? { label: "Silver", cls: "bg-slate-400/10 border-slate-400/25 text-slate-500 dark:text-slate-300", dot: "bg-slate-400" }
-        : { label: "Bronze", cls: "bg-orange-700/10 border-orange-700/25 text-orange-700 dark:text-orange-400", dot: "bg-orange-600" };
+interface AgentOrderSummary {
+  id: string;
+  orderNumber: string;
+  date: string | null;
+  amount: number | null;
+  currency: string;
+}
+
+function formatRate(rate: number) {
+  return `${rate.toLocaleString("en-GB", { maximumFractionDigits: 2 })}%`;
+}
+
+function CommissionRateBadge({ rate }: { rate: number }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 border ${tier.cls}`}>
-        <span className={`h-1.5 w-1.5 rounded-full ${tier.dot}`} />
-        <span className="text-[11px] font-bold tabular-nums">{points}</span>
-      </div>
-      <span className={`text-[10px] font-semibold ${tier.cls.split(" ").filter((c) => c.startsWith("text-")).join(" ")}`}>{tier.label}</span>
+    <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-400">
+      <Percent className="h-3 w-3" />
+      <span className="text-[11px] font-bold tabular-nums">{formatRate(rate)}</span>
     </div>
   );
 }
 
 const FILTERS = [
   { label: "All Agents", value: "all" },
-  { label: "Gold (15+)", value: "gold" },
-  { label: "Silver (8–14)", value: "silver" },
-  { label: "Bronze (0–7)", value: "bronze" },
+  { label: "15% and above", value: "high" },
+  { label: "8%–14.99%", value: "medium" },
+  { label: "Below 8%", value: "low" },
 ];
 
-interface AgentForm { name: string; address: string; city: string; contactNumber: string; email: string; referredPoints: string }
-const emptyForm = (): AgentForm => ({ name: "", address: "", city: "", contactNumber: "", email: "", referredPoints: "0" });
+interface AgentForm { name: string; address: string; city: string; contactNumber: string; email: string; commissionRate: string }
+const emptyForm = (): AgentForm => ({ name: "", address: "", city: "", contactNumber: "", email: "", commissionRate: "0" });
 
 export default function AgentsPage() {
   const { agents, loading, createAgent, updateAgent, deleteAgent } = useAgents();
@@ -71,6 +78,10 @@ export default function AgentsPage() {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState<AgentForm>(emptyForm());
   const [toDelete, setToDelete] = useState<Agent | null>(null);
+  const [ordersAgent, setOrdersAgent] = useState<Agent | null>(null);
+  const [agentOrders, setAgentOrders] = useState<AgentOrderSummary[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState("");
 
   const filtered = useMemo(() => {
     let list = [...agents];
@@ -78,18 +89,21 @@ export default function AgentsPage() {
       const q = search.toLowerCase();
       list = list.filter((a) => a.name.toLowerCase().includes(q) || a.city.toLowerCase().includes(q) || a.email.toLowerCase().includes(q) || a.contactNumber.includes(q));
     }
-    if (filter === "gold") list = list.filter((a) => a.referredPoints >= 15);
-    else if (filter === "silver") list = list.filter((a) => a.referredPoints >= 8 && a.referredPoints < 15);
-    else if (filter === "bronze") list = list.filter((a) => a.referredPoints < 8);
+    if (filter === "high") list = list.filter((a) => a.commissionRate >= 15);
+    else if (filter === "medium") list = list.filter((a) => a.commissionRate >= 8 && a.commissionRate < 15);
+    else if (filter === "low") list = list.filter((a) => a.commissionRate < 8);
     return list.sort((a, b) => a.name.localeCompare(b.name));
   }, [agents, search, filter]);
 
-  const totalPoints = agents.reduce((s, a) => s + a.referredPoints, 0);
+  const averageCommission = agents.length > 0
+    ? agents.reduce((sum, agent) => sum + agent.commissionRate, 0) / agents.length
+    : 0;
+  const highestCommission = Math.max(0, ...agents.map((agent) => agent.commissionRate));
 
   const openAdd = () => { setForm(emptyForm()); setAdding(true); };
   const openEdit = useCallback((a: Agent) => {
     setEditing(a);
-    setForm({ name: a.name, address: a.address, city: a.city, contactNumber: a.contactNumber, email: a.email, referredPoints: String(a.referredPoints) });
+    setForm({ name: a.name, address: a.address, city: a.city, contactNumber: a.contactNumber, email: a.email, commissionRate: String(a.commissionRate) });
   }, []);
   const closeDialogs = () => { setEditing(null); setAdding(false); setForm(emptyForm()); };
 
@@ -100,7 +114,7 @@ export default function AgentsPage() {
       city: form.city.trim(),
       contactNumber: form.contactNumber.trim(),
       email: form.email.trim(),
-      referredPoints: Math.max(0, parseInt(form.referredPoints, 10) || 0),
+      commissionRate: Math.min(100, Math.max(0, Number.parseFloat(form.commissionRate) || 0)),
     };
     if (!payload.name) return;
     if (editing) await updateAgent(editing.id, payload);
@@ -113,6 +127,22 @@ export default function AgentsPage() {
     deleteAgent(toDelete.id);
     setToDelete(null);
   }, [toDelete, deleteAgent]);
+
+  const openOrders = useCallback(async (agent: Agent) => {
+    setOrdersAgent(agent);
+    setAgentOrders([]);
+    setOrdersError("");
+    setOrdersLoading(true);
+    try {
+      const response = await fetch(`/api/agents/${agent.id}/orders`);
+      if (!response.ok) throw new Error("Could not load agent orders");
+      setAgentOrders(await response.json());
+    } catch {
+      setOrdersError("Could not load this agent's orders.");
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, []);
 
   const dialogOpen = adding || !!editing;
 
@@ -138,9 +168,9 @@ export default function AgentsPage() {
       <div className="flex flex-wrap gap-3">
         {[
           { icon: Users, label: "Total Agents", value: agents.length, color: "text-primary bg-primary/10 border-primary/20" },
-          { icon: Star, label: "Gold", value: agents.filter((a) => a.referredPoints >= 15).length, color: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20" },
-          { icon: Star, label: "Silver", value: agents.filter((a) => a.referredPoints >= 8 && a.referredPoints < 15).length, color: "text-slate-500 dark:text-slate-300 bg-slate-400/10 border-slate-400/20" },
-          { icon: Briefcase, label: "Total Referrals", value: totalPoints, color: "text-violet-600 dark:text-violet-400 bg-violet-500/10 border-violet-500/20" },
+          { icon: Percent, label: "Average Commission", value: formatRate(averageCommission), color: "text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+          { icon: TrendingUp, label: "Highest Commission", value: formatRate(highestCommission), color: "text-violet-600 dark:text-violet-400 bg-violet-500/10 border-violet-500/20" },
+          { icon: Briefcase, label: "Agents with Commission", value: agents.filter((a) => a.commissionRate > 0).length, color: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20" },
         ].map((chip) => (
           <div key={chip.label} className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold ${chip.color}`}>
             <chip.icon className="h-4 w-4" /> {chip.label}: {chip.value.toLocaleString()}
@@ -180,7 +210,7 @@ export default function AgentsPage() {
                   <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Agent</th>
                   <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">City</th>
                   <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contact</th>
-                  <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Referred</th>
+                  <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Commission Rate</th>
                   <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
                 </tr>
               </thead>
@@ -199,9 +229,10 @@ export default function AgentsPage() {
                         </td>
                         <td className="px-5 py-3 text-sm text-muted-foreground">{a.city || "—"}</td>
                         <td className="px-5 py-3 text-sm text-muted-foreground">{a.contactNumber || "—"}</td>
-                        <td className="px-5 py-3"><ReferredPointsBadge points={a.referredPoints} /></td>
+                        <td className="px-5 py-3"><CommissionRateBadge rate={a.commissionRate} /></td>
                         <td className="px-5 py-3">
                           <div className="flex items-center justify-end gap-1.5">
+                            <button onClick={() => openOrders(a)} title={`View orders referred by ${a.name}`} className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-violet-500/20 bg-violet-500/10 px-2.5 text-[11px] font-semibold text-violet-600 transition-colors hover:bg-violet-500/20 dark:text-violet-400"><ShoppingCart className="h-3.5 w-3.5" /> Orders</button>
                             <button onClick={() => openEdit(a)} title="Edit" className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
                             <button onClick={() => setToDelete(a)} title="Delete" className="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/20 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                           </div>
@@ -236,8 +267,8 @@ export default function AgentsPage() {
                 <Input className="rounded-xl bg-muted/30 border-border/40" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Referred Points</Label>
-                <Input type="number" min={0} className="rounded-xl bg-muted/30 border-border/40" value={form.referredPoints} onChange={(e) => setForm((f) => ({ ...f, referredPoints: e.target.value }))} />
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Commission Rate (%)</Label>
+                <Input type="number" min={0} max={100} step="0.01" className="rounded-xl bg-muted/30 border-border/40" value={form.commissionRate} onChange={(e) => setForm((f) => ({ ...f, commissionRate: e.target.value }))} />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -259,6 +290,42 @@ export default function AgentsPage() {
             <Button variant="ghost" className="rounded-xl" onClick={closeDialogs}>Cancel</Button>
             <Button onClick={submit} disabled={!form.name.trim()} className="rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold">{editing ? "Save Changes" : "Add Agent"}</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Orders referred by the selected agent — loaded from persisted Order records. */}
+      <Dialog open={!!ordersAgent} onOpenChange={(open) => { if (!open) { setOrdersAgent(null); setAgentOrders([]); setOrdersError(""); } }}>
+        <DialogContent className="sm:max-w-2xl rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold"><ShoppingCart className="h-4 w-4 text-violet-600" /> Orders referred by {ordersAgent?.name}</DialogTitle>
+          </DialogHeader>
+          {ordersLoading ? (
+            <div className="flex items-center justify-center gap-2 py-14 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /> Loading orders…</div>
+          ) : ordersError ? (
+            <p className="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">{ordersError}</p>
+          ) : agentOrders.length === 0 ? (
+            <div className="py-14 text-center"><ShoppingCart className="mx-auto mb-3 h-9 w-9 text-muted-foreground/25" /><p className="text-sm font-medium">No orders referenced to this agent.</p></div>
+          ) : (
+            <div className="max-h-[420px] overflow-auto rounded-xl border border-border/40">
+              <table className="w-full border-collapse">
+                <thead className="sticky top-0 bg-muted/95">
+                  <tr className="border-b border-border/30">
+                    {["Order number", "Date", "Order amount"].map((heading) => <th key={heading} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{heading}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {agentOrders.map((order) => (
+                    <tr key={order.id} className="border-b border-border/20 last:border-b-0">
+                      <td className="px-4 py-3"><Link href={`/orders/${order.id}`} className="font-mono text-sm font-semibold text-primary hover:underline">{order.orderNumber || "—"}</Link></td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground">{order.date ? new Date(order.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</td>
+                      <td className="px-4 py-3 text-sm font-semibold tabular-nums">{order.amount == null ? <span className="font-normal text-muted-foreground">Restricted</span> : formatCurrency(order.amount, order.currency)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <DialogFooter><Button variant="outline" className="rounded-xl" onClick={() => setOrdersAgent(null)}>Close</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 

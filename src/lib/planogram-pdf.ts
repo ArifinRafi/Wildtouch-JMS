@@ -9,7 +9,27 @@ export interface PdfCell { product: string; image: string; qty: number }
 export interface PdfRow { description: string; cells: PdfCell[] }
 export interface PdfSide { label: string; sub?: string; charms?: string; columns: number; rows: PdfRow[] }
 export interface PdfPlanogram { name: string; sides: PdfSide[] }
+export interface PlanogramQuantities { slots?: number[][][]; segQty?: number[][][]; rowQty?: number[][][] }
 export interface PdfOrderGroup { name: string; quantity: number }
+
+/** Apply the quantities entered for this particular order/quote to the planogram template. */
+export function applyPlanogramQuantities(planogram: PdfPlanogram, grid?: PlanogramQuantities | null): PdfPlanogram {
+  const quantities = grid?.slots ?? grid?.segQty ?? grid?.rowQty;
+  if (!quantities) return planogram;
+  return {
+    ...planogram,
+    sides: planogram.sides.map((side, sideIndex) => ({
+      ...side,
+      rows: side.rows.map((row, rowIndex) => ({
+        ...row,
+        cells: row.cells.map((cell, cellIndex) => ({
+          ...cell,
+          qty: Math.max(0, Number(quantities[sideIndex]?.[rowIndex]?.[cellIndex]) || 0),
+        })),
+      })),
+    })),
+  };
+}
 
 export interface PdfMeta {
   orderNumber?: string;

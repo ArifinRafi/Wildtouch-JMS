@@ -20,7 +20,7 @@ export default function PlanogramStepPage() {
   const { draft, patchDraft } = useOrderDraft();
   const { items } = useInventory();
   const { planograms: custom } = useCustomPlanograms();
-  const nextHref = draft.isBackOrder ? "/orders/new/client" : "/orders/new/inventory";
+  const nextHref = draft.isBackOrder || draft.isProforma ? "/orders/new/client" : "/orders/new/inventory";
   const backOrderDateMissing = draft.isBackOrder && !draft.backOrderDate;
 
   // Selector list: custom + built-in.
@@ -56,28 +56,34 @@ export default function PlanogramStepPage() {
     if (!slotPg) { slotInited.current = null; return; }
     if (slotInited.current === slotPg.id) return;
     slotInited.current = slotPg.id;
-    setSlots(draft.slots && draft.slots.length ? draft.slots : buildInitialSlots(slotPg));
-    setSlotActive(0);
+    queueMicrotask(() => {
+      setSlots(draft.slots && draft.slots.length ? draft.slots : buildInitialSlots(slotPg));
+      setSlotActive(0);
+    });
   }, [slotPg, draft.slots]);
 
   useEffect(() => {
     if (!segPg) { segInited.current = null; return; }
     if (segInited.current === segPg.id) return;
     segInited.current = segPg.id;
-    setSegQty(draft.segQty && draft.segQty.length ? draft.segQty : buildInitialSegQty(segPg));
-    setSegActive(0);
+    queueMicrotask(() => {
+      setSegQty(draft.segQty && draft.segQty.length ? draft.segQty : buildInitialSegQty(segPg));
+      setSegActive(0);
+    });
   }, [segPg, draft.segQty]);
 
   useEffect(() => {
     if (!customPg) { rowInited.current = null; return; }
     if (rowInited.current === customPg.id) return;
     rowInited.current = customPg.id;
-    setRowQty(
-      draft.rowQty && draft.rowQty.length
-        ? draft.rowQty
-        : customPg.sides.map((s) => s.rows.map((r) => r.cells.map((c) => c.qty))),
-    );
-    setRowActive(0);
+    queueMicrotask(() => {
+      setRowQty(
+        draft.rowQty && draft.rowQty.length
+          ? draft.rowQty
+          : customPg.sides.map((s) => s.rows.map((r) => r.cells.map((c) => c.qty))),
+      );
+      setRowActive(0);
+    });
   }, [customPg, draft.rowQty]);
 
   const changePlanogram = () => {
@@ -155,7 +161,7 @@ export default function PlanogramStepPage() {
             ))}
           </div>
         </motion.div>
-        <StepNav backHref="/orders" nextDisabled nextLabel="Next" />
+        <StepNav backHref={draft.isProforma ? "/proforma-invoices" : "/orders"} nextDisabled nextLabel="Next" />
       </div>
     );
   }
@@ -190,7 +196,7 @@ export default function PlanogramStepPage() {
         <SegmentPlanogramGrid segments={segPg.segments} columns={segPg.columns}
           value={segQty.length ? segQty : buildInitialSegQty(segPg)} onChange={setSegQty}
           activeSeg={segActive} onActiveSegChange={setSegActive} />
-        <StepNav backHref="/orders" nextHref={nextHref} onNext={segNext} nextDisabled={segGrand === 0 || backOrderDateMissing} />
+        <StepNav backHref={draft.isProforma ? "/proforma-invoices" : "/orders"} nextHref={nextHref} onNext={segNext} nextDisabled={segGrand === 0 || backOrderDateMissing} />
       </div>
     );
   }
@@ -202,7 +208,7 @@ export default function PlanogramStepPage() {
         <SlotPlanogramGrid sides={slotPg.sides} slotCount={slotPg.slotCount}
           value={slots.length ? slots : buildInitialSlots(slotPg)} onChange={setSlots}
           activeSide={slotActive} onActiveSideChange={setSlotActive} />
-        <StepNav backHref="/orders" nextHref={nextHref} onNext={slotNext} nextDisabled={slotGrand === 0 || backOrderDateMissing} />
+        <StepNav backHref={draft.isProforma ? "/proforma-invoices" : "/orders"} nextHref={nextHref} onNext={slotNext} nextDisabled={slotGrand === 0 || backOrderDateMissing} />
       </div>
     );
   }
@@ -218,7 +224,7 @@ export default function PlanogramStepPage() {
           activeSide={rowActive}
           onActiveSideChange={setRowActive}
         />
-        <StepNav backHref="/orders" nextHref={nextHref} onNext={rowNext} nextDisabled={rowGrand === 0 || backOrderDateMissing} />
+        <StepNav backHref={draft.isProforma ? "/proforma-invoices" : "/orders"} nextHref={nextHref} onNext={rowNext} nextDisabled={rowGrand === 0 || backOrderDateMissing} />
       </div>
     );
   }
@@ -228,7 +234,7 @@ export default function PlanogramStepPage() {
     <div className="space-y-6">
       {headerBar}
       <p className="text-sm text-muted-foreground py-12 text-center">Loading planogram…</p>
-      <StepNav backHref="/orders" nextDisabled />
+      <StepNav backHref={draft.isProforma ? "/proforma-invoices" : "/orders"} nextDisabled />
     </div>
   );
 }

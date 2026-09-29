@@ -17,6 +17,7 @@ function cleanNotes(raw: unknown): { date: string; note: string }[] {
 }
 
 function clean(body: Record<string, unknown>) {
+  const shipmentMethod = String(body.shipmentMethod ?? "").trim();
   return {
     orderNumber: String(body.orderNumber ?? "").trim(),
     date: String(body.date ?? "").trim(),
@@ -25,11 +26,14 @@ function clean(body: Record<string, unknown>) {
     quantity: Math.max(0, Number(body.quantity) || 0),
     quantityReceived: Math.max(0, Number(body.quantityReceived) || 0),
     priority: String(body.priority ?? "").trim(),
-    shipmentMethod: String(body.shipmentMethod ?? "").trim(),
+    shipmentMethod: ["Road", "Air", "Sea"].includes(shipmentMethod) ? shipmentMethod : "",
+    shipmentQuantity: Math.max(0, Number(body.shipmentQuantity) || 0),
+    shipmentDate: String(body.shipmentDate ?? "").trim(),
     progressNotes: String(body.progressNotes ?? "").trim(),
     notesLog: cleanNotes(body.notesLog),
     dateRequested: String(body.dateRequested ?? "").trim(),
     datePaid: String(body.datePaid ?? "").trim(),
+    paid: Boolean(body.paid),
     valueRmb: Math.max(0, Number(body.valueRmb) || 0),
     valueGbp: Math.max(0, Number(body.valueGbp) || 0),
     componentId: String(body.componentId ?? "").trim(),

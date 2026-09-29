@@ -71,11 +71,13 @@ const AgentSnapshotSchema = new Schema(
 const OrderSchema = new Schema(
   {
     orderNumber: { type: String, required: true, unique: true },
+    sourceProformaId: { type: String, unique: true, sparse: true },
     status: { type: String, enum: ORDER_STATUSES, default: "received" },
     planogram: {
       id: { type: String, default: "" },
       name: { type: String, default: "" },
     },
+    grid: { type: Schema.Types.Mixed, default: () => ({}) },
     client: { type: ClientSnapshotSchema, default: () => ({}) },
     agent: { type: AgentSnapshotSchema, default: () => ({}) },
     orderSource: {
@@ -119,6 +121,7 @@ export function serializeOrder(doc: {
   orderNumber: string;
   status?: string;
   planogram?: { id?: string; name?: string } | null;
+  grid?: Record<string, unknown> | null;
   client?: Record<string, unknown> | null;
   agent?: Record<string, unknown> | null;
   orderSource?: string;
@@ -143,6 +146,7 @@ export function serializeOrder(doc: {
     orderNumber: doc.orderNumber,
     status: doc.status ?? "received",
     planogram: { id: doc.planogram?.id ?? "", name: doc.planogram?.name ?? "" },
+    grid: doc.grid ?? {},
     client: doc.client ?? {},
     agent: doc.agent ?? {},
     orderSource: normalizeOrderSource(doc.orderSource),

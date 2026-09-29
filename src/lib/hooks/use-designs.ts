@@ -13,6 +13,7 @@ export interface Design {
   addedToCodeSheet: string;
   addedToNewDesignBrochure: string;
   addedToThemedBrochure: string;
+  alertDate: string;
   stage: string;
   stageHistory: StageHistoryEntry[];
   completed: boolean;
@@ -62,6 +63,7 @@ export function useDesigns() {
     if (!res.ok) throw new Error("Failed to add design");
     const created: Design = await res.json();
     setDesigns((prev) => [created, ...prev]);
+    window.dispatchEvent(new Event("designs-changed"));
     return created;
   }, []);
 
@@ -76,6 +78,7 @@ export function useDesigns() {
     if (!res.ok) throw new Error("Failed to update design");
     const updated: Design = await res.json();
     setDesigns((prev) => prev.map((d) => (d.id === id ? updated : d)));
+    window.dispatchEvent(new Event("designs-changed"));
     return updated;
   }, []);
 
@@ -84,6 +87,7 @@ export function useDesigns() {
     setDesigns((cur) => cur.filter((d) => d.id !== id));
     const res = await fetch(`/api/designs/${id}`, { method: "DELETE" });
     if (!res.ok) { setDesigns(prev); throw new Error("Failed to delete design"); }
+    window.dispatchEvent(new Event("designs-changed"));
   }, [designs]);
 
   return { designs, loading, addDesign, updateDesign, deleteDesign };

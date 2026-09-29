@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Task, serializeTask, TASK_STATUS, TASK_PRIORITY } from "@/lib/models/Task";
+import { Client } from "@/lib/models/Client";
 import { logActivity } from "@/lib/activity";
 
 export async function GET(request: NextRequest) {
@@ -16,9 +17,16 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const status = TASK_STATUS.includes(body.status) ? body.status : "pending";
   const priority = TASK_PRIORITY.includes(body.priority) ? body.priority : "medium";
+  const clientId = String(body.clientId ?? "").trim();
+  const client = clientId ? await Client.findById(clientId, { name: 1 }).lean() : null;
+  if (!client) {
+    return NextResponse.json({ error: "a valid client is required" }, { status: 400 });
+  }
   const created = await Task.create({
     date: String(body.date ?? "").trim(),
     employeeName: String(body.employeeName ?? "").trim(),
+    clientId,
+    clientName: String(client.name ?? "").trim(),
     taskName: String(body.taskName ?? "").trim(),
     note: String(body.note ?? "").trim(),
     status,
@@ -29,7 +37,7 @@ export async function POST(request: NextRequest) {
     entityType: "task",
     entityName: created.taskName || "task",
     entityId: String(created._id),
-    details: created.employeeName ? `for ${created.employeeName} on ${created.date}` : `on ${created.date}`,
+    details: `${created.employeeName ? `for ${created.employeeName}` : ""}${created.clientName ? ` · client ${created.clientName}` : ""} on ${created.date}`.trim(),
   });
   return NextResponse.json(serializeTask(created.toObject()), { status: 201 });
 }

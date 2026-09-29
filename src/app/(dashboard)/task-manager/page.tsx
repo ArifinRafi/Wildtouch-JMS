@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 import {
   ListChecks,
   Plus,
@@ -10,7 +11,6 @@ import {
   CalendarDays,
   CheckCircle2,
   Circle,
-  Flag,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,9 @@ export default function TaskManagerPage() {
 
   const [date, setDate] = useState(today());
   const [empName, setEmpName] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
+  const [directoryEmployees, setDirectoryEmployees] = useState<string[]>(EMPLOYEE_NAMES);
   const [taskName, setTaskName] = useState("");
   const [note, setNote] = useState("");
   const [status, setStatus] = useState<TaskStatus>("pending");
@@ -45,12 +48,37 @@ export default function TaskManagerPage() {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    let active = true;
+    fetch("/api/clients")
+      .then((response) => (response.ok ? response.json() : []))
+      .then((data: { id?: string; name?: string }[]) => {
+        if (!active) return;
+        setClients(data
+          .filter((client): client is { id: string; name: string } => Boolean(client.id && client.name))
+          .sort((a, b) => a.name.localeCompare(b.name)));
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/employees")
+      .then((response) => (response.ok ? response.json() : []))
+      .then((data: { name?: string }[]) => {
+        if (active) setDirectoryEmployees(data.flatMap((employee) => employee.name ? [employee.name] : []));
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   // Employee suggestions: the shared employee log + any names already used in tasks.
   const employeeOptions = useMemo(() => {
-    const set = new Set<string>(EMPLOYEE_NAMES);
+    const set = new Set<string>(directoryEmployees);
     tasks.forEach((t) => t.employeeName && set.add(t.employeeName));
     return [...set].sort();
-  }, [tasks]);
+  }, [tasks, directoryEmployees]);
 
   // Tasks for the selected date, ordered High → Medium → Low priority.
   const PRIORITY_RANK: Record<TaskPriority, number> = { high: 0, medium: 1, low: 2 };
@@ -72,13 +100,15 @@ export default function TaskManagerPage() {
     if (!date) { setError("Select a date first."); return; }
     if (!taskName.trim()) { setError("Enter a task name."); return; }
     if (!empName.trim()) { setError("Enter an employee name."); return; }
+    const client = clients.find((item) => item.id === clientId);
+    if (!client) { setError("Select a client for this task."); return; }
     setError(""); setAdding(true);
     try {
-      await addTask({ date, employeeName: empName.trim(), taskName: taskName.trim(), note: note.trim(), status, priority });
-      setTaskName(""); setEmpName(""); setNote(""); setStatus("pending"); setPriority("medium");
+      await addTask({ date, employeeName: empName.trim(), clientId: client.id, clientName: client.name, taskName: taskName.trim(), note: note.trim(), status, priority });
+      setTaskName(""); setEmpName(""); setClientId(""); setNote(""); setStatus("pending"); setPriority("medium");
     } catch { setError("Could not add the task."); }
     finally { setAdding(false); }
-  }, [date, empName, taskName, note, status, priority, addTask]);
+  }, [date, empName, clientId, clients, taskName, note, status, priority, addTask]);
 
   const toggleStatus = (t: Task) => updateTask(t.id, { status: t.status === "complete" ? "pending" : "complete" }).catch(() => {});
   const setTaskPriority = (t: Task, p: TaskPriority) => updateTask(t.id, { priority: p }).catch(() => {});
@@ -93,7 +123,7 @@ export default function TaskManagerPage() {
           <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground/90 to-foreground/60 bg-clip-text text-transparent flex items-center gap-3">
             <ListChecks className="h-7 w-7 text-primary" /> Task Manager
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">Assign dated tasks to employees · track status &amp; priority</p>
+          <p className="text-sm text-muted-foreground mt-1">Assign dated tasks to employees and clients · track status &amp; priority</p>
         </div>
         {/* Date selector (calendar) */}
         <div className="flex items-center gap-2 rounded-xl border border-border/40 bg-card/70 glass px-3 py-2">
@@ -119,10 +149,17 @@ export default function TaskManagerPage() {
         className="rounded-2xl border border-border/40 bg-card/70 glass p-4">
         <div className="flex items-center gap-2 mb-3"><Plus className="h-4 w-4 text-primary" /><h3 className="text-sm font-semibold">New task for {new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</h3></div>
         {error && <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-1.5 border border-destructive/20 mb-3">{error}</p>}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 items-end">
           <div className="space-y-1.5">
             <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Employee</Label>
             <EmployeeCombo value={empName} options={employeeOptions} onChange={setEmpName} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Client</Label>
+            <select value={clientId} onChange={(e) => setClientId(e.target.value)} className={cn(cellSelect, "w-full h-10 rounded-xl")}>
+              <option value="">Select client…</option>
+              {clients.map((client) => <option key={client.id} value={client.id}>{client.name} ({client.id})</option>)}
+            </select>
           </div>
           <div className="space-y-1.5">
             <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Task name</Label>
@@ -165,10 +202,10 @@ export default function TaskManagerPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px] border-collapse">
+            <table className="w-full min-w-[850px] border-collapse">
               <thead>
                 <tr className="border-b border-border/30 bg-muted/20">
-                  {["", "Employee", "Task", "Note", "Priority", "Status", ""].map((h, i) => (
+                  {["", "Employee", "Client", "Task", "Note", "Priority", "Status", ""].map((h, i) => (
                     <th key={i} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                   ))}
                 </tr>
@@ -184,9 +221,14 @@ export default function TaskManagerPage() {
                         </button>
                       </td>
                       <td className="px-4 py-3 text-sm font-medium">{t.employeeName || "—"}</td>
+                      <td className="px-4 py-3 text-sm">
+                        {t.clientId ? (
+                          <Link href={`/clients/${t.clientId}`} className="font-medium text-primary hover:underline">{t.clientName || t.clientId}</Link>
+                        ) : <span className="text-muted-foreground/40">—</span>}
+                      </td>
                       <td className={cn("px-4 py-3 text-sm", t.status === "complete" && "line-through text-muted-foreground")}>{t.taskName || "—"}</td>
                       <td className="px-4 py-3 min-w-[180px]">
-                        <NoteCell task={t} onSave={saveNote} />
+                        <NoteCell key={`${t.id}:${t.note}`} task={t} onSave={saveNote} />
                       </td>
                       <td className="px-4 py-3">
                         <select value={t.priority} onChange={(e) => setTaskPriority(t, e.target.value as TaskPriority)}
@@ -217,8 +259,6 @@ export default function TaskManagerPage() {
 /** Inline note editor: seeds from the task, saves on blur (or Enter) if changed. */
 function NoteCell({ task, onSave }: { task: Task; onSave: (t: Task, v: string) => void }) {
   const [value, setValue] = useState(task.note ?? "");
-  // Keep in sync if the task's note changes elsewhere.
-  useEffect(() => { setValue(task.note ?? ""); }, [task.note]);
   return (
     <input
       value={value}

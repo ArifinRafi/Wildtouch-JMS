@@ -14,10 +14,13 @@ export interface RiverOrder {
   status: "open" | "partial" | "complete";
   priority: string;
   shipmentMethod: string;
+  shipmentQuantity: number;
+  shipmentDate: string;
   progressNotes: string;
   notesLog: { date: string; note: string }[];
   dateRequested: string;
   datePaid: string;
+  paid: boolean;
   valueRmb: number;
   valueGbp: number;
   componentId: string;

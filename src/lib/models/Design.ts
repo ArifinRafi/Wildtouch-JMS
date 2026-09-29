@@ -1,14 +1,11 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
+import {
+  DESIGN_DEFAULT_STAGE,
+  DESIGN_FINAL_STAGE,
+  normalizeDesignStage,
+} from "@/lib/design-stage";
 
-/** Design pipeline stages. The final stage means the design is finished and flows to River. */
-export const DESIGN_STAGES = [
-  "New Design Request",
-  "Research",
-  "Feedback",
-  "New Design Template",
-] as const;
-/** Reaching this stage marks the design finished → available in River. */
-export const DESIGN_FINAL_STAGE = "New Design Template";
+export { DESIGN_DEFAULT_STAGE, DESIGN_FINAL_STAGE, DESIGN_RIVER_STAGE, DESIGN_STAGES } from "@/lib/design-stage";
 
 /** One recorded stage transition (kept as an audit trail; reverts carry a note). */
 const StageHistorySchema = new Schema(
@@ -25,8 +22,8 @@ const StageHistorySchema = new Schema(
 
 /**
  * A new component design being tracked (Design Tracker "Live New Designs").
- * Format/checklist columns hold a dropdown value; moving a design to the final
- * stage ("New Design Template") makes it an orderable component in River.
+ * Format/checklist columns hold a dropdown value. Reaching Template makes the
+ * design orderable in River; reaching Sample completes the tracker item.
  */
 const DesignSchema = new Schema(
   {
@@ -42,13 +39,15 @@ const DesignSchema = new Schema(
     addedToCodeSheet: { type: String, default: "" },
     addedToNewDesignBrochure: { type: String, default: "" },
     addedToThemedBrochure: { type: String, default: "" },
-    /** Pipeline stage; the final stage keeps `completed` in sync (see the API). */
-    stage: { type: String, default: "New Design Request" },
+    /** Date from which this in-progress design appears in Notifications (YYYY-MM-DD). */
+    alertDate: { type: String, default: "" },
+    /** Pipeline stage; Sample keeps `completed` in sync (see the API). */
+    stage: { type: String, default: DESIGN_DEFAULT_STAGE },
     /** Audit trail of stage changes (from → to, date, and note for reverts). */
     stageHistory: { type: [StageHistorySchema], default: [] },
-    /** True when the design is at the final stage — kept in sync with `stage`. Drives River. */
+    /** True when the design is at Sample — kept in sync with `stage`. */
     completed: { type: Boolean, default: false },
-    /** Set once the completed design has been ordered or dismissed in River. */
+    /** Set once the Template-stage design has been ordered or dismissed in River. */
     riverAcknowledged: { type: Boolean, default: false },
   },
   { timestamps: true },
@@ -67,9 +66,8 @@ export const DESIGN_STRING_FIELDS = [
 
 export function serializeDesign(doc: Record<string, unknown> & { _id: unknown }) {
   const g = (k: string) => (doc[k] == null ? "" : String(doc[k]));
-  const completed = Boolean(doc.completed);
-  // Old rows have no `stage` — derive it from `completed` so they display sensibly.
-  const stage = g("stage") || (completed ? DESIGN_FINAL_STAGE : "New Design Request");
+  const stage = normalizeDesignStage(g("stage"), Boolean(doc.completed));
+  const completed = stage === DESIGN_FINAL_STAGE;
   return {
     id: String(doc._id),
     name: g("name"),
@@ -81,11 +79,12 @@ export function serializeDesign(doc: Record<string, unknown> & { _id: unknown })
     addedToCodeSheet: g("addedToCodeSheet"),
     addedToNewDesignBrochure: g("addedToNewDesignBrochure"),
     addedToThemedBrochure: g("addedToThemedBrochure"),
+    alertDate: g("alertDate"),
     stage,
     stageHistory: Array.isArray(doc.stageHistory)
       ? (doc.stageHistory as Record<string, unknown>[]).map((h) => ({
-          from: String(h?.from ?? ""),
-          to: String(h?.to ?? ""),
+          from: h?.from ? normalizeDesignStage(h.from) : "",
+          to: h?.to ? normalizeDesignStage(h.to) : "",
           note: String(h?.note ?? ""),
           revert: Boolean(h?.revert),
           at: h?.at ? new Date(h.at as string).toISOString() : null,

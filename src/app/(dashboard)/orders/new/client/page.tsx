@@ -35,8 +35,9 @@ export default function ClientStepPage() {
   const { clients, clientsLoading } = useAppStore();
   const { agents, loading: agentsLoading } = useAgents();
   const [search, setSearch] = useState("");
+  const [prospectName, setProspectName] = useState("");
   const [agentSearch, setAgentSearch] = useState("");
-  const backHref = draft.isBackOrder ? "/orders/new/planogram" : "/orders/new/inventory";
+  const backHref = draft.isBackOrder || draft.isProforma ? "/orders/new/planogram" : "/orders/new/inventory";
 
   const selected = useMemo(
     () => clients.find((c) => c.id === draft.client?.clientId) ?? null,
@@ -91,6 +92,8 @@ export default function ClientStepPage() {
         vatRate: c.vatRate ?? 0,
       },
       agent: assignedAgent ? agentSnapshot(assignedAgent) : null,
+      currency: c.pricingCurrency ?? "GBP",
+      categoryPrices: c.categoryPrices ?? {},
     });
   };
 
@@ -104,10 +107,10 @@ export default function ClientStepPage() {
     patchDraft({ client: { ...draft.client, [key]: value } });
   };
 
-  const changeClient = () => patchDraft({ client: null });
+  const changeClient = () => patchDraft({ client: null, categoryPrices: {} });
 
   // ── No client selected: picker ──
-  if (!draft.client?.clientId) {
+  if (!draft.client?.clientId && !(draft.isProforma && draft.client?.name)) {
     return (
       <div className="space-y-6">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}
@@ -117,6 +120,19 @@ export default function ClientStepPage() {
             <h2 className="text-base font-semibold">Select a client</h2>
           </div>
           <p className="text-sm text-muted-foreground mb-4">Choose the client this order is for. Their addresses auto-fill next.</p>
+
+          {draft.isProforma && (
+            <div className="mb-5 rounded-xl border border-primary/25 bg-primary/5 p-4">
+              <p className="mb-2 text-xs font-semibold">New prospect not in Clients?</p>
+              <div className="flex flex-wrap gap-2">
+                <Input aria-label="Prospect name" placeholder="Customer or company name" value={prospectName} onChange={(event) => setProspectName(event.target.value)} className="max-w-xs bg-background" />
+                <Button type="button" disabled={!prospectName.trim()} onClick={() => {
+                  patchDraft({ client: { clientId: "", name: prospectName.trim(), companyName: prospectName.trim(), contactName: "", email: "", contactNumber: "", invoiceAddress: "", deliveryAddress: "", brandCardImage: "", barcodeImage: "", vatRate: 20 }, categoryPrices: {}, currency: "GBP" });
+                  setProspectName("");
+                }}>Use as new prospect</Button>
+              </div>
+            </div>
+          )}
 
           <div className="relative max-w-md mb-4">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
@@ -171,6 +187,20 @@ export default function ClientStepPage() {
       </div>
 
       {/* Assigned agent */}
+      {draft.isProforma && !c.clientId && (
+        <div className="rounded-2xl border border-border/40 bg-card/70 p-6 space-y-4">
+          <h3 className="text-sm font-semibold">Prospect details</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {([
+              ["name", "Client name"], ["companyName", "Company name"],
+              ["contactName", "Contact name"], ["email", "Email"],
+              ["contactNumber", "Telephone"],
+            ] as const).map(([key, label]) => (
+              <div key={key} className="space-y-1.5"><Label>{label}</Label><Input value={c[key] ?? ""} onChange={(event) => patchDraft({ client: { ...c, [key]: event.target.value } })} /></div>
+            ))}
+          </div>
+        </div>
+      )}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.04 }}
         className="rounded-2xl border border-border/40 bg-card/70 glass p-6 space-y-4">
         <div className="flex items-center gap-2">
@@ -300,6 +330,13 @@ export default function ClientStepPage() {
               placeholder="Enter reference number" className="rounded-xl border-border/40 bg-muted/20" />
           </div>
         </div>
+        {draft.isProforma && (
+          <div className="space-y-1.5">
+            <Label htmlFor="proforma-notes" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Additional information</Label>
+            <textarea id="proforma-notes" rows={3} value={draft.notes} onChange={(event) => patchDraft({ notes: event.target.value })}
+              className="w-full resize-y rounded-xl border border-border/40 bg-muted/20 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" />
+          </div>
+        )}
       </motion.div>
 
       <StepNav backHref={backHref} nextHref="/orders/new/review" nextDisabled={!c.invoiceAddress?.trim() || !draft.orderSource} />

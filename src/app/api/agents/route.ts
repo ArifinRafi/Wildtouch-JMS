@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     city: String(body.city ?? "").trim(),
     contactNumber: String(body.contactNumber ?? "").trim(),
     email: String(body.email ?? "").trim(),
-    referredPoints: Math.max(0, Number(body.referredPoints) || 0),
+    commissionRate: Math.min(100, Math.max(0, Number(body.commissionRate) || 0)),
   });
   await logActivity({
     action: "added",

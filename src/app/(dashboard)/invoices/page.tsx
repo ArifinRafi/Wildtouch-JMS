@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Receipt, FileText, Loader2, ArrowRight, CalendarDays, X, Trash2, AlertTriangle } from "lucide-react";
+import { Receipt, FileText, Loader2, ArrowRight, CalendarDays, X, Trash2, AlertTriangle, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,6 +13,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { formatCurrency, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
+import { INVOICE_PAYMENT_STATUSES, invoiceStatusLabel } from "@/lib/invoice-status";
+
+interface InvoiceComment { text: string; createdAt: string | null; createdBy: string }
 
 interface InvoiceListItem {
   id: string;
@@ -21,6 +24,7 @@ interface InvoiceListItem {
   client: { name?: string };
   total: number;
   status: string;
+  comments?: InvoiceComment[];
   isPartial?: boolean;
   paymentAmount?: number;
   balanceDue?: number;
@@ -31,6 +35,11 @@ interface InvoiceListItem {
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function fmtDateTime(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 /** Local-timezone YYYY-MM-DD key, to match a date-picker value against a timestamp. */
@@ -50,6 +59,11 @@ export default function InvoicesPage() {
   const [role, setRole] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<InvoiceListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [savingStatusId, setSavingStatusId] = useState<string | null>(null);
+  const [commentInvoiceId, setCommentInvoiceId] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState("");
+  const [savingComment, setSavingComment] = useState(false);
+  const [updateError, setUpdateError] = useState("");
 
   useEffect(() => {
     let on = true;
@@ -70,6 +84,41 @@ export default function InvoicesPage() {
   }, []);
 
   const isAdmin = role === "admin";
+  const canEdit = role === "admin" || role === "manager";
+  const commentInvoice = invoices.find((invoice) => invoice.id === commentInvoiceId) ?? null;
+
+  const changeStatus = async (invoice: InvoiceListItem, status: string) => {
+    if (!canEdit || savingStatusId) return;
+    setSavingStatusId(invoice.id); setUpdateError("");
+    try {
+      const response = await fetch(`/api/invoices/${invoice.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const saved = await response.json();
+      if (!response.ok) throw new Error(saved.error || "Could not update invoice status");
+      setInvoices((current) => current.map((item) => item.id === invoice.id ? saved : item));
+    } catch (error) { setUpdateError(error instanceof Error ? error.message : "Could not update invoice status"); }
+    finally { setSavingStatusId(null); }
+  };
+
+  const addComment = async () => {
+    if (!commentInvoice || !canEdit || !commentText.trim() || savingComment) return;
+    setSavingComment(true); setUpdateError("");
+    try {
+      const response = await fetch(`/api/invoices/${commentInvoice.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: commentText.trim() }),
+      });
+      const saved = await response.json();
+      if (!response.ok) throw new Error(saved.error || "Could not save comment");
+      setInvoices((current) => current.map((item) => item.id === commentInvoice.id ? saved : item));
+      setCommentText("");
+    } catch (error) { setUpdateError(error instanceof Error ? error.message : "Could not save comment"); }
+    finally { setSavingComment(false); }
+  };
 
   const filtered = useMemo(
     () => (dateFilter ? invoices.filter((i) => dateKey(i.createdAt) === dateFilter) : invoices),
@@ -142,6 +191,8 @@ export default function InvoicesPage() {
         </div>
       </motion.div>
 
+      {updateError && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{updateError}</p>}
+
       <div className="rounded-2xl border border-border/40 bg-card/70 glass overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-20 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /><span className="text-sm">Loading invoices…</span></div>
@@ -164,7 +215,7 @@ export default function InvoicesPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px] border-collapse">
+            <table className="w-full min-w-[1120px] border-collapse">
               <thead>
                 <tr className="border-b border-border/30 bg-muted/20">
                   <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-12">#</th>
@@ -172,6 +223,9 @@ export default function InvoicesPage() {
                   <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Client</th>
                   <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Date</th>
                   <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total</th>
+                  <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
+                  <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Comments</th>
+                  <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Comment date &amp; time</th>
                   <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"></th>
                   {isAdmin && <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-12"></th>}
                 </tr>
@@ -203,6 +257,28 @@ export default function InvoicesPage() {
                           </p>
                         )}
                       </td>
+                      <td className="px-5 py-3 text-xs">
+                        {canEdit && inv.status !== "void" ? (
+                          <select
+                            aria-label={`Payment status for ${inv.invoiceNumber}`}
+                            value={inv.status || "issued"}
+                            disabled={savingStatusId === inv.id}
+                            onChange={(event) => void changeStatus(inv, event.target.value)}
+                            className="w-48 rounded-lg border border-border/60 bg-background px-2 py-2 text-xs outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
+                          >
+                            {INVOICE_PAYMENT_STATUSES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                          </select>
+                        ) : <span>{invoiceStatusLabel(inv.status)}</span>}
+                      </td>
+                      <td className="px-5 py-3 text-xs">
+                        {inv.comments?.length ? <p className="max-w-[220px] truncate" title={inv.comments[inv.comments.length - 1].text}>{inv.comments[inv.comments.length - 1].text}</p> : <p className="text-muted-foreground">No comments</p>}
+                        <button
+                          type="button"
+                          onClick={() => { setUpdateError(""); setCommentText(""); setCommentInvoiceId(inv.id); }}
+                          className="mt-1 inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                        ><MessageSquare className="h-3 w-3" /> {canEdit ? "View / Add" : "View"}{inv.comments?.length ? ` (${inv.comments.length})` : ""}</button>
+                      </td>
+                      <td className="px-5 py-3 text-xs text-muted-foreground whitespace-nowrap">{fmtDateTime(inv.comments?.at(-1)?.createdAt ?? null)}</td>
                       <td className="px-5 py-3 text-right">
                         <Link href={`/invoices/${inv.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
                           View <ArrowRight className="h-3.5 w-3.5" />
@@ -224,6 +300,42 @@ export default function InvoicesPage() {
           </div>
         )}
       </div>
+
+      <Dialog open={!!commentInvoice} onOpenChange={(open) => { if (!open && !savingComment) { setCommentInvoiceId(null); setCommentText(""); setUpdateError(""); } }}>
+        <DialogContent className="sm:max-w-lg rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold">Invoice comments · {commentInvoice?.invoiceNumber}</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+            {commentInvoice?.comments?.length ? [...commentInvoice.comments].reverse().map((comment, index) => (
+              <div key={`${comment.createdAt}-${index}`} className="rounded-xl border border-border/40 bg-muted/20 px-3 py-2.5">
+                <p className="whitespace-pre-wrap text-sm">{comment.text}</p>
+                <p className="mt-2 text-[11px] text-muted-foreground">{fmtDateTime(comment.createdAt)}{comment.createdBy ? ` · ${comment.createdBy}` : ""}</p>
+              </div>
+            )) : <p className="py-6 text-center text-sm text-muted-foreground">No comments yet.</p>}
+          </div>
+          {canEdit && <div className="space-y-2 border-t border-border/40 pt-3">
+            <label htmlFor="invoice-comment" className="text-xs font-semibold">Add a comment</label>
+            <textarea
+              id="invoice-comment"
+              value={commentText}
+              onChange={(event) => setCommentText(event.target.value)}
+              maxLength={2000}
+              rows={3}
+              placeholder="Write an invoice note…"
+              className="w-full resize-y rounded-xl border border-border/60 bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <p className="text-[11px] text-muted-foreground">The date and time are added automatically when you save.</p>
+          </div>}
+          {updateError && <p role="alert" className="text-sm text-destructive">{updateError}</p>}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="ghost" onClick={() => { setCommentInvoiceId(null); setCommentText(""); setUpdateError(""); }} disabled={savingComment}>Close</Button>
+            {canEdit && <Button onClick={addComment} disabled={!commentText.trim() || savingComment}>
+              {savingComment ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save comment"}
+            </Button>}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirm (admin only) */}
       <Dialog open={!!toDelete} onOpenChange={(o) => !o && !deleting && setToDelete(null)}>

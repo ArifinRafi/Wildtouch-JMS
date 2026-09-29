@@ -9,10 +9,12 @@ import { Button } from "@/components/ui/button";
 import { thumbUrl } from "@/lib/cloudinary";
 import {
   resolvePlanogramForPdf,
+  applyPlanogramQuantities,
   buildPlanogramSidesHtml,
   groupOrderLinesForPdf,
   type PdfMeta,
   type PdfPlanogram,
+  type PlanogramQuantities,
 } from "@/lib/planogram-pdf";
 import { formatCurrency } from "@/lib/currency";
 
@@ -282,6 +284,7 @@ export default function InvoiceViewPage() {
   const [orderLines, setOrderLines] = useState<InvoiceLine[]>([]);
   // Full side-by-side planogram structure (custom or built-in) for the paginated PDF.
   const [sidesPg, setSidesPg] = useState<PdfPlanogram | null>(null);
+  const [orderGrid, setOrderGrid] = useState<PlanogramQuantities | null>(null);
   const [productImages, setProductImages] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -337,6 +340,7 @@ export default function InvoiceViewPage() {
                     .catch(() => {});
                 }
                 setPlanogramName(order?.planogram?.name ?? "");
+                setOrderGrid(order?.grid ?? null);
                 // Resolve the full planogram (sides/rows/cells) for the per-side PDF.
                 resolvePlanogramForPdf(order?.planogram?.id)
                   .then((pg) => { if (on) setSidesPg(pg); })
@@ -424,7 +428,7 @@ export default function InvoiceViewPage() {
     const html = sidesPg
       ? buildPlanogramSidesHtml(
           pdfMeta,
-          sidesPg,
+          applyPlanogramQuantities(sidesPg, orderGrid),
           (product) => {
             const url = productImages[`name:${product.toLowerCase()}`] ?? "";
             return url ? thumbUrl(url, 96) : "";

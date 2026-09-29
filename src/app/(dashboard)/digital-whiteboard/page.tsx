@@ -36,6 +36,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { useRole } from "@/lib/hooks/use-role";
+import { WHITEBOARD_STATUSES, type WhiteboardStatus } from "@/lib/whiteboard-status";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface WhiteboardOrder {
@@ -59,25 +61,12 @@ interface WhiteboardOrder {
 
 type Priority   = "1 - Urgent" | "2 - Moderate" | "3 - Normal";
 type OrderType  = "Order" | "Pre Order" | "Proforma";
-type OrderStatus =
-  | "TTO - To Take Out"
-  | "OIP - Order In Process"
-  | "TBC - To Be Checked"
-  | "TBM - To Be Made"
-  | "In Transit"
-  | "Order Made - Await Delivery";
+type OrderStatus = WhiteboardStatus;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PRIORITIES: Priority[]    = ["1 - Urgent", "2 - Moderate", "3 - Normal"];
 const ORDER_TYPES: OrderType[]  = ["Order", "Pre Order", "Proforma"];
-const STATUSES: OrderStatus[]   = [
-  "TTO - To Take Out",
-  "OIP - Order In Process",
-  "TBC - To Be Checked",
-  "TBM - To Be Made",
-  "In Transit",
-  "Order Made - Await Delivery",
-];
+const STATUSES: OrderStatus[] = [...WHITEBOARD_STATUSES];
 const LOCATIONS = [
   "UPS", "DHL", "FED-EX", "Palletways",
   "Kiran", "Richard", "Zia", "OFC",
@@ -99,7 +88,7 @@ interface OrderForm {
 const emptyForm = (): OrderForm => ({
   date: today, priority: "2 - Moderate", customerName: "",
   orderType: "Order", proforma: "", product: "",
-  qty: "", location: "UPS", status: "OIP - Order In Process",
+  qty: "", location: "UPS", status: "Orders to be made in the office",
   dueDate: "", dateOut: "", deliveryDate: "",
   completed: "", notes: "",
 });
@@ -116,20 +105,18 @@ const priorityLabel: Record<Priority, string> = {
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 const statusStyle: Record<OrderStatus, string> = {
-  "TTO - To Take Out":            "bg-violet-500/15 border-violet-500/30 text-violet-600 dark:text-violet-400",
-  "OIP - Order In Process":       "bg-blue-500/15 border-blue-500/30 text-blue-600 dark:text-blue-400",
-  "TBC - To Be Checked":          "bg-yellow-500/15 border-yellow-500/30 text-yellow-600 dark:text-yellow-400",
-  "TBM - To Be Made":             "bg-pink-500/15 border-pink-500/30 text-pink-600 dark:text-pink-400",
-  "In Transit":                   "bg-cyan-500/15 border-cyan-500/30 text-cyan-600 dark:text-cyan-400",
-  "Order Made - Await Delivery":  "bg-orange-500/15 border-orange-500/30 text-orange-600 dark:text-orange-400",
+  "Orders To take out": "bg-violet-500/15 border-violet-500/30 text-violet-600 dark:text-violet-400",
+  "Orders to be made in the office": "bg-blue-500/15 border-blue-500/30 text-blue-600 dark:text-blue-400",
+  "Orders to send out": "bg-cyan-500/15 border-cyan-500/30 text-cyan-600 dark:text-cyan-400",
+  "Orders for handler": "bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400",
+  "Get ready for next week": "bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
 };
 const statusShort: Record<OrderStatus, string> = {
-  "TTO - To Take Out":           "TTO",
-  "OIP - Order In Process":      "In Process",
-  "TBC - To Be Checked":         "To Check",
-  "TBM - To Be Made":            "To Make",
-  "In Transit":                  "In Transit",
-  "Order Made - Await Delivery": "Awaiting",
+  "Orders To take out": "Take Out",
+  "Orders to be made in the office": "Make in Office",
+  "Orders to send out": "Send Out",
+  "Orders for handler": "For Handler",
+  "Get ready for next week": "Next Week",
 };
 
 // ─── Date formatter ───────────────────────────────────────────────────────────
@@ -141,6 +128,7 @@ function fmtDate(iso: string | null): string {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function DigitalWhiteboardPage() {
+  const { isAdmin } = useRole();
   const [orders, setOrders] = useState<WhiteboardOrder[]>([]);
   useEffect(() => {
     let on = true;
@@ -157,6 +145,8 @@ export default function DigitalWhiteboardPage() {
   const [search, setSearch]               = useState("");
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("All");
   const [statusFilter, setStatusFilter]   = useState<string>("all");
+  const [completionView, setCompletionView] = useState<"active" | "completed">("active");
+  const showingCompleted = isAdmin && completionView === "completed";
 
   // ── Dialog state ──
   const [dlgOpen, setDlgOpen]       = useState(false);
@@ -167,6 +157,12 @@ export default function DigitalWhiteboardPage() {
   // ── Filtered list ─────────────────────────────────────────────────────────
   const visible = useMemo(() => {
     let list = [...orders];
+
+    // Completed work is kept off the live board. Admins can open the separate
+    // Completed view; non-admin users never receive that view in the UI.
+    list = list.filter((order) => showingCompleted
+      ? order.completed === "Completed"
+      : order.completed !== "Completed");
 
     // Priority filter
     if (priorityFilter !== "All") {
@@ -198,14 +194,14 @@ export default function DigitalWhiteboardPage() {
       if (pa !== pb) return pa - pb;
       return b.date.localeCompare(a.date);
     });
-  }, [orders, priorityFilter, statusFilter, search]);
+  }, [orders, priorityFilter, statusFilter, search, showingCompleted]);
 
   // ── Stats (counts per priority, always from full orders list) ─────────────
   const stats = useMemo(() => ({
-    total:    orders.length,
-    urgent:   orders.filter((o) => o.priority === "1 - Urgent").length,
-    moderate: orders.filter((o) => o.priority === "2 - Moderate").length,
-    normal:   orders.filter((o) => o.priority === "3 - Normal").length,
+    total:    orders.filter((o) => o.completed !== "Completed").length,
+    urgent:   orders.filter((o) => o.completed !== "Completed" && o.priority === "1 - Urgent").length,
+    moderate: orders.filter((o) => o.completed !== "Completed" && o.priority === "2 - Moderate").length,
+    normal:   orders.filter((o) => o.completed !== "Completed" && o.priority === "3 - Normal").length,
     completed:orders.filter((o) => o.completed === "Completed").length,
   }), [orders]);
 
@@ -266,7 +262,9 @@ export default function DigitalWhiteboardPage() {
 
   // ── Print PDF ─────────────────────────────────────────────────────────────
   const printBoard = useCallback(() => {
-    const tabLabel = priorityFilter === "All" ? "Full Board" : priorityLabel[priorityFilter as Priority] ?? priorityFilter;
+    const tabLabel = showingCompleted
+      ? "Completed Orders"
+      : priorityFilter === "All" ? "Active Board" : priorityLabel[priorityFilter as Priority] ?? priorityFilter;
     const title = `Wildtouch JMS — Digital Whiteboard — ${tabLabel}`;
 
     const rows = visible.map((o) => `
@@ -333,7 +331,7 @@ export default function DigitalWhiteboardPage() {
     win.document.close();
     win.focus();
     setTimeout(() => win.print(), 350);
-  }, [visible, priorityFilter]);
+  }, [visible, priorityFilter, showingCompleted]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -373,7 +371,7 @@ export default function DigitalWhiteboardPage() {
       >
         {/* All */}
         {(() => {
-          const isActive = priorityFilter === "All";
+          const isActive = priorityFilter === "All" && !showingCompleted;
           return (
             <motion.button
               key="All"
@@ -382,7 +380,7 @@ export default function DigitalWhiteboardPage() {
               transition={{ delay: 0.08 }}
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.96 }}
-              onClick={() => setPriorityFilter("All")}
+              onClick={() => { setCompletionView("active"); setPriorityFilter("All"); }}
               className={cn(
                 "flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-all duration-200 cursor-pointer",
                 isActive
@@ -413,7 +411,7 @@ export default function DigitalWhiteboardPage() {
               transition={{ delay: 0.13 }}
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.96 }}
-              onClick={() => setPriorityFilter(isActive ? "All" : "1 - Urgent")}
+              onClick={() => { setCompletionView("active"); setPriorityFilter(isActive ? "All" : "1 - Urgent"); }}
               className={cn(
                 "flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-all duration-200 cursor-pointer",
                 isActive
@@ -444,7 +442,7 @@ export default function DigitalWhiteboardPage() {
               transition={{ delay: 0.18 }}
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.96 }}
-              onClick={() => setPriorityFilter(isActive ? "All" : "2 - Moderate")}
+              onClick={() => { setCompletionView("active"); setPriorityFilter(isActive ? "All" : "2 - Moderate"); }}
               className={cn(
                 "flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-all duration-200 cursor-pointer",
                 isActive
@@ -475,7 +473,7 @@ export default function DigitalWhiteboardPage() {
               transition={{ delay: 0.23 }}
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.96 }}
-              onClick={() => setPriorityFilter(isActive ? "All" : "3 - Normal")}
+              onClick={() => { setCompletionView("active"); setPriorityFilter(isActive ? "All" : "3 - Normal"); }}
               className={cn(
                 "flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-all duration-200 cursor-pointer",
                 isActive
@@ -495,16 +493,32 @@ export default function DigitalWhiteboardPage() {
           );
         })()}
 
-        {/* Completed (info only, not a priority filter — stays right-aligned) */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.28 }}
-          className="ml-auto flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
-        >
-          <Truck className="h-4 w-4" />
-          Completed: {stats.completed}
-        </motion.div>
+        {/* Completed tasks are a separate admin-only view. */}
+        {isAdmin && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.28 }}
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            onClick={() => { setCompletionView("completed"); setPriorityFilter("All"); }}
+            className={cn(
+              "ml-auto flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-all",
+              showingCompleted
+                ? "bg-emerald-500 text-white border-transparent shadow-lg shadow-emerald-500/25"
+                : "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20",
+            )}
+          >
+            <Truck className="h-4 w-4" />
+            Completed
+            <span className={cn(
+              "ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+              showingCompleted ? "bg-white/20 text-white" : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+            )}>
+              {stats.completed}
+            </span>
+          </motion.button>
+        )}
       </motion.div>
 
       {/* ── Secondary filter bar: status + search ── */}
@@ -727,6 +741,9 @@ export default function DigitalWhiteboardPage() {
             order{visible.length === 1 ? "" : "s"}
             {priorityFilter !== "All" && (
               <> — <span className="font-semibold text-foreground">{priorityLabel[priorityFilter as Priority]}</span> priority</>
+            )}
+            {showingCompleted && (
+              <> — <span className="font-semibold text-emerald-600 dark:text-emerald-400">completed only</span></>
             )}
           </p>
           <motion.button

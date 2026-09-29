@@ -5,10 +5,10 @@ import { requireAdmin, isResponse } from "@/lib/authz";
 import { RiverOrder, serializeRiverOrder } from "@/lib/models/RiverOrder";
 import { logActivity } from "@/lib/activity";
 
-const NUM = new Set(["quantity", "quantityReceived", "valueRmb", "valueGbp"]);
+const NUM = new Set(["quantity", "quantityReceived", "shipmentQuantity", "valueRmb", "valueGbp"]);
 const STR = new Set([
   "orderNumber", "date", "product", "description", "priority", "shipmentMethod", "progressNotes",
-  "dateRequested", "datePaid", "componentId", "componentCode", "componentLabel",
+  "shipmentDate", "dateRequested", "datePaid", "componentId", "componentCode", "componentLabel",
 ]);
 
 export async function PATCH(
@@ -25,7 +25,11 @@ export async function PATCH(
   const patch: Record<string, unknown> = {};
   for (const k of Object.keys(body)) {
     if (NUM.has(k)) patch[k] = Math.max(0, Number(body[k]) || 0);
-    else if (STR.has(k)) patch[k] = String(body[k] ?? "").trim();
+    else if (k === "shipmentMethod") {
+      const method = String(body[k] ?? "").trim();
+      patch[k] = ["Road", "Air", "Sea"].includes(method) ? method : "";
+    } else if (STR.has(k)) patch[k] = String(body[k] ?? "").trim();
+    else if (k === "paid") patch[k] = Boolean(body[k]);
   }
   if (Array.isArray(body.notesLog)) {
     patch.notesLog = body.notesLog

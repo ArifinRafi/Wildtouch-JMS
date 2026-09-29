@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import type { OrderSource } from "@/lib/order-source";
+import type { PlanogramQuantities } from "@/lib/planogram-pdf";
 
 export interface OrderLineItem {
   code: string;
@@ -54,6 +55,7 @@ export interface Order {
   orderNumber: string;
   status: string;
   planogram: { id: string; name: string };
+  grid?: PlanogramQuantities;
   client: OrderClientSnapshot;
   agent: OrderAgentSnapshot;
   orderSource: OrderSource | "";

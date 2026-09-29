@@ -2,10 +2,18 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isValidObjectId } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { requireAdmin, isResponse } from "@/lib/authz";
-import { Design, serializeDesign, DESIGN_STRING_FIELDS, DESIGN_STAGES, DESIGN_FINAL_STAGE } from "@/lib/models/Design";
+import { Design, serializeDesign, DESIGN_STRING_FIELDS } from "@/lib/models/Design";
+import {
+  DESIGN_FINAL_STAGE,
+  DESIGN_RIVER_STAGE,
+  DESIGN_STAGES,
+  isDesignStage,
+  normalizeDesignStage,
+} from "@/lib/design-stage";
 import { logActivity } from "@/lib/activity";
 
 const STR = new Set<string>(DESIGN_STRING_FIELDS);
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function PATCH(
   request: NextRequest,
@@ -26,11 +34,18 @@ export async function PATCH(
     if (STR.has(k)) patch[k] = String(body[k] ?? "").trim();
     else if (k === "completed" || k === "riverAcknowledged") patch[k] = Boolean(body[k]);
   }
+  if (body.alertDate !== undefined) {
+    const alertDate = String(body.alertDate ?? "").trim();
+    if (alertDate && !DATE_PATTERN.test(alertDate)) {
+      return NextResponse.json({ error: "invalid alert date" }, { status: 400 });
+    }
+    patch.alertDate = alertDate;
+  }
 
-  // Stage is authoritative for completion: set it and sync `completed` (drives River).
+  // Stage is authoritative: Template sends to River; Sample completes the design.
   let historyEntry: { from: string; to: string; note: string; revert: boolean; at: Date } | null = null;
-  if (body.stage !== undefined && DESIGN_STAGES.includes(body.stage)) {
-    const prevStage = String(existing.stage || (existing.completed ? DESIGN_FINAL_STAGE : "New Design Request"));
+  if (body.stage !== undefined && isDesignStage(body.stage)) {
+    const prevStage = normalizeDesignStage(existing.stage, Boolean(existing.completed));
     if (body.stage !== prevStage) {
       const fromIdx = DESIGN_STAGES.indexOf(prevStage as (typeof DESIGN_STAGES)[number]);
       const toIdx = DESIGN_STAGES.indexOf(body.stage);
@@ -48,8 +63,10 @@ export async function PATCH(
     patch.stage = body.stage;
     const nowFinal = body.stage === DESIGN_FINAL_STAGE;
     patch.completed = nowFinal;
-    // Newly reaching the final stage → surface it in River again as a new design to order.
-    if (nowFinal && !existing.completed) patch.riverAcknowledged = false;
+    // Selecting Template surfaces the design in River as a new design to order.
+    if (body.stage === DESIGN_RIVER_STAGE && prevStage !== DESIGN_RIVER_STAGE) {
+      patch.riverAcknowledged = false;
+    }
   }
 
   const update: Record<string, unknown> = { $set: patch };

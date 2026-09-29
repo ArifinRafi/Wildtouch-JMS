@@ -18,6 +18,8 @@ import {
   Save,
   X,
   Sparkles,
+  Download,
+  WalletCards,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -59,16 +61,17 @@ export default function RiverPage() {
   const { isAdmin } = useRole();
 
   const [search, setSearch] = useState("");
+  const [unpaidOnly, setUnpaidOnly] = useState(false);
   const [designs, setDesigns] = useState<{ id: string; name: string; riverAcknowledged: boolean }[]>([]);
   const [ndOpen, setNdOpen] = useState(false);
 
-  // Completed designs from the Design Tracker — orderable components.
+  // Template-stage designs from the Design Tracker — orderable components.
   const refreshDesigns = useCallback(() => {
-    fetch("/api/designs?completed=true").then((r) => (r.ok ? r.json() : [])).then((d) => setDesigns(Array.isArray(d) ? d : [])).catch(() => {});
+    fetch("/api/designs?riverReady=true").then((r) => (r.ok ? r.json() : [])).then((d) => setDesigns(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
   useEffect(() => { refreshDesigns(); }, [refreshDesigns]);
 
-  // "New Design" notifications: completed designs not yet ordered or dismissed.
+  // "New Design" notifications: Template-stage designs not yet ordered or dismissed.
   const newDesigns = useMemo(() => designs.filter((d) => !d.riverAcknowledged), [designs]);
 
   const acknowledge = useCallback((id: string) => {
@@ -89,20 +92,22 @@ export default function RiverPage() {
   const [toDelete, setToDelete] = useState<RiverOrder | null>(null);
 
   const filtered = useMemo(() => {
+    const byPayment = unpaidOnly ? orders.filter((o) => !o.paid) : orders;
     const q = search.trim().toLowerCase();
-    if (!q) return orders;
-    return orders.filter((o) => o.orderNumber.toLowerCase().includes(q) || o.product.toLowerCase().includes(q) || o.description.toLowerCase().includes(q));
-  }, [orders, search]);
+    if (!q) return byPayment;
+    return byPayment.filter((o) => o.orderNumber.toLowerCase().includes(q) || o.product.toLowerCase().includes(q) || o.description.toLowerCase().includes(q));
+  }, [orders, search, unpaidOnly]);
 
   const stats = useMemo(() => {
     const totalReceived = orders.reduce((s, o) => s + o.quantityReceived, 0);
     const outstanding = orders.reduce((s, o) => s + o.outstanding, 0);
     const valueGbp = orders.reduce((s, o) => s + o.valueGbp, 0);
-    return { count: orders.length, totalReceived, outstanding, valueGbp };
+    const unpaid = orders.filter((o) => !o.paid).length;
+    return { count: orders.length, totalReceived, outstanding, valueGbp, unpaid };
   }, [orders]);
 
-  const df = (k: keyof RiverOrder, v: string | number) => setDraft((p) => ({ ...p, [k]: v }));
-  // Refresh completed designs when entering edit mode so the component field is current.
+  const df = (k: keyof RiverOrder, v: string | number | boolean) => setDraft((p) => ({ ...p, [k]: v }));
+  // Refresh River-ready designs when entering edit mode so the component field is current.
   const startEdit = (o: RiverOrder) => { refreshDesigns(); setDraft({ ...o }); setEditingId(o.id); };
 
   const addRow = useCallback(async () => {
@@ -141,8 +146,9 @@ export default function RiverPage() {
       product: String(draft.product ?? "").trim(), description: String(draft.description ?? "").trim(),
       quantity: num(draft.quantity), valueGbp: num(draft.valueGbp), valueRmb: num(draft.valueRmb),
       priority: String(draft.priority ?? "").trim(), shipmentMethod: String(draft.shipmentMethod ?? "").trim(),
+      shipmentQuantity: num(draft.shipmentQuantity), shipmentDate: String(draft.shipmentDate ?? ""),
       notesLog: (draft.notesLog ?? []).map((n) => ({ date: String(n?.date ?? ""), note: String(n?.note ?? "") })),
-      dateRequested: String(draft.dateRequested ?? ""), datePaid: String(draft.datePaid ?? ""),
+      dateRequested: String(draft.dateRequested ?? ""), datePaid: String(draft.datePaid ?? ""), paid: Boolean(draft.paid),
     };
     try { await updateOrder(editingId, payload); setEditingId(null); setNewRowId(null); setDraft({}); }
     catch { /* ignore */ } finally { setSaving(false); }
@@ -170,7 +176,7 @@ export default function RiverPage() {
     setToDelete(null);
   }, [toDelete, deleteOrder]);
 
-  const COLS = ["Order #", "Date", "Component", "Description", "Qty", "£", "¥", "Priority", "Shipment", "Notes", "Requested", "Paid", "Done", "Left", "Status", ""];
+  const COLS = ["Order #", "Date", "Component", "Description", "Qty", "£", "¥", "Priority", "Shipment", "Notes", "Requested", "Paid date", "Paid", "Done", "Left", "Status", ""];
 
   return (
     <div className="space-y-6 pb-12">
@@ -185,7 +191,10 @@ export default function RiverPage() {
             New components ordered from vendor <span className="font-semibold text-primary">River</span> · completing adds them to your inventory
           </p>
         </div>
-        <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+        <motion.div whileHover={{ scale: 1.01 }} className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" onClick={() => window.location.assign("/api/river/export")} className="gap-2 rounded-xl border-emerald-500/25 bg-emerald-500/10 font-semibold text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-400">
+            <Download className="h-4 w-4" /> Download Excel
+          </Button>
           <Button onClick={addRow} disabled={!!editingId} className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold shadow-lg shadow-primary/20 disabled:opacity-50">
             <Plus className="h-4 w-4" /> New River Order
           </Button>
@@ -216,7 +225,7 @@ export default function RiverPage() {
           <DropdownMenuContent align="end" className="w-80 glass-strong bg-popover/95 border-border/40 rounded-2xl p-1">
             <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">New designs to order</div>
             {newDesigns.length === 0 ? (
-              <p className="px-3 py-3 text-xs text-muted-foreground">No new designs waiting. Completed designs from the Design Tracker show up here.</p>
+              <p className="px-3 py-3 text-xs text-muted-foreground">No new designs waiting. Designs that reach Template in the Design Tracker show up here.</p>
             ) : (
               <div className="max-h-80 overflow-y-auto">
                 {newDesigns.map((d) => (
@@ -234,11 +243,16 @@ export default function RiverPage() {
         </DropdownMenu>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
-        <Input placeholder="Search order #, component…" value={search} onChange={(e) => setSearch(e.target.value)}
-          className="pl-9 rounded-xl bg-card/70 glass border-border/40" />
+      {/* Search + unpaid filter */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative w-full max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+          <Input placeholder="Search order #, component…" value={search} onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 rounded-xl bg-card/70 glass border-border/40" />
+        </div>
+        <Button type="button" variant={unpaidOnly ? "default" : "outline"} onClick={() => setUnpaidOnly((value) => !value)} className={cn("gap-2 rounded-xl", unpaidOnly && "bg-rose-600 text-white hover:bg-rose-600/90")}>
+          <WalletCards className="h-4 w-4" /> Unpaid only ({stats.unpaid})
+        </Button>
       </div>
 
       {/* Table */}
@@ -254,9 +268,9 @@ export default function RiverPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse table-fixed">
+            <table className="w-full min-w-[2220px] border-collapse table-fixed">
               <colgroup>
-                {[6, 6, 10, 8, 4, 5, 5, 6, 8, 10, 6, 6, 4, 4, 5, 7].map((w, i) => <col key={i} style={{ width: `${w}%` }} />)}
+                {[90, 110, 170, 180, 80, 90, 90, 100, 340, 260, 120, 120, 100, 80, 80, 100, 110].map((w, i) => <col key={i} style={{ width: `${w}px` }} />)}
               </colgroup>
               <thead>
                 <tr className="border-b border-border/30 bg-muted/20">
@@ -264,6 +278,9 @@ export default function RiverPage() {
                 </tr>
               </thead>
               <tbody>
+                {filtered.length === 0 && (
+                  <tr><td colSpan={COLS.length} className="py-14 text-center text-sm text-muted-foreground">{unpaidOnly ? "No unpaid River orders match your search." : "No River orders match your search."}</td></tr>
+                )}
                 <AnimatePresence mode="popLayout">
                   {filtered.map((o) => {
                     const editing = editingId === o.id;
@@ -315,10 +332,26 @@ export default function RiverPage() {
                             </select>
                           ) : (o.priority ? <Badge variant="outline" className={cn("text-[9px] px-1.5 font-semibold", PRIORITY_STYLE[o.priority] ?? "")}>{o.priority}</Badge> : <span className="text-[10px] text-muted-foreground/40">—</span>)}
                         </td>
-                        {/* Shipment method */}
+                        {/* Shipment method, quantity and date */}
                         <td className="px-1.5 py-2 align-top">
-                          {editing ? <input value={String(v.shipmentMethod ?? "")} onChange={(e) => df("shipmentMethod", e.target.value)} placeholder="e.g. Air" className={cellInput} />
-                            : <span className="text-[10px] text-muted-foreground break-words">{o.shipmentMethod || "—"}</span>}
+                          {editing ? (
+                            <div className="grid grid-cols-[85px_80px_1fr] gap-1.5">
+                              <select value={String(v.shipmentMethod ?? "")} onChange={(e) => df("shipmentMethod", e.target.value)} className={cellInput} title="Shipment method">
+                                <option value="">Method</option>
+                                <option value="Road">Road</option>
+                                <option value="Air">Air</option>
+                                <option value="Sea">Sea</option>
+                              </select>
+                              <input inputMode="numeric" value={String(v.shipmentQuantity ?? 0)} onChange={(e) => df("shipmentQuantity", parseInt(e.target.value.replace(/\D/g, ""), 10) || 0)} placeholder="Qty" title="Shipment quantity" className={cn(cellInput, "text-right")} />
+                              <input type="date" value={String(v.shipmentDate ?? "")} onChange={(e) => df("shipmentDate", e.target.value)} title="Shipment date" className={cellInput} />
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-3 gap-2 text-[10px]">
+                              <span className="font-semibold">{o.shipmentMethod || "—"}</span>
+                              <span className="text-right tabular-nums text-muted-foreground">{o.shipmentQuantity > 0 ? o.shipmentQuantity.toLocaleString() : "—"}</span>
+                              <span className="text-muted-foreground">{o.shipmentDate || "—"}</span>
+                            </div>
+                          )}
                         </td>
                         {/* Notes */}
                         <td className="px-1.5 py-2 align-top">
@@ -337,10 +370,23 @@ export default function RiverPage() {
                           {editing ? <input type="date" value={String(v.dateRequested ?? "")} onChange={(e) => df("dateRequested", e.target.value)} className={cellInput} />
                             : <span className="text-[10px] text-muted-foreground break-words">{o.dateRequested || "—"}</span>}
                         </td>
-                        {/* Paid */}
+                        {/* Paid date */}
                         <td className="px-1.5 py-2 align-top">
                           {editing ? <input type="date" value={String(v.datePaid ?? "")} onChange={(e) => df("datePaid", e.target.value)} className={cellInput} />
                             : <span className="text-[10px] text-muted-foreground break-words">{o.datePaid || "—"}</span>}
+                        </td>
+                        {/* Explicit Paid / Unpaid state */}
+                        <td className="px-1.5 py-2 align-top">
+                          {editing ? (
+                            <select value={v.paid ? "paid" : "unpaid"} onChange={(e) => df("paid", e.target.value === "paid")} className={cellInput}>
+                              <option value="unpaid">Unpaid</option>
+                              <option value="paid">Paid</option>
+                            </select>
+                          ) : (
+                            <Badge variant="outline" className={cn("text-[9px] px-1.5 font-semibold", o.paid ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "border-rose-500/25 bg-rose-500/10 text-rose-600 dark:text-rose-400")}>
+                              {o.paid ? "Paid" : "Unpaid"}
+                            </Badge>
+                          )}
                         </td>
                         {/* Done */}
                         <td className="px-1.5 py-2 align-top text-right text-[11px] tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">{o.quantityReceived.toLocaleString()}</td>

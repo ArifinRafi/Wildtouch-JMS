@@ -9,7 +9,9 @@ const AgentSchema = new Schema(
     city: { type: String, default: "" },
     contactNumber: { type: String, default: "" },
     email: { type: String, default: "" },
-    referredPoints: { type: Number, default: 0, min: 0 },
+    commissionRate: { type: Number, default: undefined, min: 0, max: 100 },
+    // Kept temporarily so existing agent records can be migrated without losing data.
+    referredPoints: { type: Number, default: undefined, min: 0 },
   },
   { timestamps: true },
 );
@@ -32,7 +34,10 @@ export async function nextAgentId(): Promise<string> {
 }
 
 export function serializeAgent(doc: Record<string, unknown>) {
-  const { _id, __v, createdAt, updatedAt, ...rest } = doc as Record<string, unknown> & { _id: unknown };
+  const { _id, __v, createdAt, updatedAt, referredPoints, commissionRate, ...rest } = doc as Record<string, unknown> & { _id: unknown };
   void __v; void createdAt; void updatedAt;
-  return { id: String(_id), ...rest };
+  const currentRate = commissionRate == null ? Number.NaN : Number(commissionRate);
+  const legacyRate = referredPoints == null ? Number.NaN : Number(referredPoints);
+  const rate = Number.isFinite(currentRate) ? currentRate : Number.isFinite(legacyRate) ? legacyRate : 0;
+  return { id: String(_id), ...rest, commissionRate: Math.min(100, Math.max(0, rate)) };
 }

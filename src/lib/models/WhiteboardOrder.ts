@@ -1,4 +1,5 @@
 import mongoose, { Schema, type Model } from "mongoose";
+import { normalizeWhiteboardStatus } from "@/lib/whiteboard-status";
 
 /** Digital Whiteboard order — string _id keeps the "WB-0001" codes. */
 const WhiteboardSchema = new Schema(
@@ -12,7 +13,7 @@ const WhiteboardSchema = new Schema(
     product: { type: String, default: "" },
     qty: { type: Number, default: null },
     location: { type: String, default: "" },
-    status: { type: String, default: "OIP - Order In Process" },
+    status: { type: String, default: "Orders to be made in the office" },
     dueDate: { type: String, default: "" },
     dateOut: { type: String, default: null },
     deliveryDate: { type: String, default: null },
@@ -51,7 +52,9 @@ const WB_STRING_FIELDS = [
 /** Normalize whiteboard order input (create/update). */
 export function cleanWhiteboardBody(body: Record<string, unknown>) {
   const out: Record<string, unknown> = {};
-  for (const k of WB_STRING_FIELDS) if (body[k] !== undefined) out[k] = String(body[k] ?? "");
+  for (const k of WB_STRING_FIELDS) {
+    if (body[k] !== undefined) out[k] = k === "status" ? normalizeWhiteboardStatus(body[k]) : String(body[k] ?? "");
+  }
   if (body.qty !== undefined) out.qty = body.qty === null || body.qty === "" ? null : Number(body.qty);
   if (body.dateOut !== undefined) out.dateOut = body.dateOut || null;
   if (body.deliveryDate !== undefined) out.deliveryDate = body.deliveryDate || null;
@@ -61,7 +64,7 @@ export function cleanWhiteboardBody(body: Record<string, unknown>) {
 export function serializeWhiteboard(doc: Record<string, unknown>) {
   const { _id, __v, createdAt, updatedAt, ...rest } = doc as Record<string, unknown> & { _id: unknown };
   void __v; void createdAt; void updatedAt;
-  return { id: String(_id), ...rest };
+  return { id: String(_id), ...rest, status: normalizeWhiteboardStatus(rest.status) };
 }
 
 interface ConfirmedOrderWhiteboardInput {
@@ -112,7 +115,7 @@ export async function ensureOrderOnWhiteboard(input: ConfirmedOrderWhiteboardInp
       product,
       qty,
       location: "OFC",
-      status: "OIP - Order In Process",
+      status: "Orders to be made in the office",
       dueDate: "",
       dateOut: null,
       deliveryDate: null,

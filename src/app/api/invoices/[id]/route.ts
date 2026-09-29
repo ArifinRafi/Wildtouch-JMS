@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isValidObjectId } from "mongoose";
 import { connectDB } from "@/lib/db";
-import { requireAdmin, isResponse } from "@/lib/authz";
+import { requireAdmin, isResponse, sessionUser } from "@/lib/authz";
 import { Invoice, serializeInvoice } from "@/lib/models/Invoice";
 import { Order } from "@/lib/models/Order";
 import { logActivity } from "@/lib/activity";
+import { isInvoicePaymentStatus } from "@/lib/invoice-status";
 
 export async function GET(
   _request: NextRequest,
@@ -17,6 +18,56 @@ export async function GET(
   await connectDB();
   const doc = await Invoice.findById(id).lean();
   if (!doc) return NextResponse.json({ error: "not found" }, { status: 404 });
+  return NextResponse.json(serializeInvoice(doc));
+}
+
+export async function PATCH(
+  request: NextRequest,
+  ctx: RouteContext<"/api/invoices/[id]">,
+) {
+  const user = await sessionUser();
+  if (!user) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (user.role !== "admin" && user.role !== "manager") {
+    return NextResponse.json({ error: "invoice updates require admin or manager" }, { status: 403 });
+  }
+
+  const { id } = await ctx.params;
+  if (!isValidObjectId(id)) return NextResponse.json({ error: "invalid id" }, { status: 400 });
+
+  let body: { status?: unknown; comment?: unknown };
+  try { body = await request.json(); }
+  catch { return NextResponse.json({ error: "invalid JSON" }, { status: 400 }); }
+  if (!body || typeof body !== "object") return NextResponse.json({ error: "invalid update" }, { status: 400 });
+
+  const hasStatus = Object.prototype.hasOwnProperty.call(body, "status");
+  const hasComment = Object.prototype.hasOwnProperty.call(body, "comment");
+  if (hasStatus === hasComment) {
+    return NextResponse.json({ error: "send a status or a comment" }, { status: 400 });
+  }
+
+  await connectDB();
+  if (hasStatus) {
+    if (!isInvoicePaymentStatus(body.status)) {
+      return NextResponse.json({ error: "invalid invoice status" }, { status: 400 });
+    }
+    const doc = await Invoice.findByIdAndUpdate(id, { $set: { status: body.status } }, { returnDocument: "after", runValidators: true }).lean();
+    if (!doc) return NextResponse.json({ error: "not found" }, { status: 404 });
+    try { await logActivity({ action: "updated", entityType: "invoice", entityName: doc.invoiceNumber, entityId: id, details: `payment status changed to ${body.status}` }); }
+    catch (error) { console.error("Invoice status saved but activity logging failed", error); }
+    return NextResponse.json(serializeInvoice(doc));
+  }
+
+  if (typeof body.comment !== "string" || !body.comment.trim() || body.comment.trim().length > 2000) {
+    return NextResponse.json({ error: "comment must be 1–2000 characters" }, { status: 400 });
+  }
+  const doc = await Invoice.findByIdAndUpdate(
+    id,
+    { $push: { comments: { text: body.comment.trim(), createdAt: new Date(), createdBy: user.name || user.email || "User" } } },
+    { returnDocument: "after", runValidators: true },
+  ).lean();
+  if (!doc) return NextResponse.json({ error: "not found" }, { status: 404 });
+  try { await logActivity({ action: "updated", entityType: "invoice", entityName: doc.invoiceNumber, entityId: id, details: "comment added" }); }
+  catch (error) { console.error("Invoice comment saved but activity logging failed", error); }
   return NextResponse.json(serializeInvoice(doc));
 }
 

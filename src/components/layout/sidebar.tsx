@@ -28,6 +28,7 @@ import {
   ListChecks,
   History,
   BookOpen,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -46,6 +47,7 @@ type NavItem = {
   section: string;
   children?: NavChild[];
   adminOnly?: boolean;
+  writeOnly?: boolean;
 };
 
 const navigation: NavItem[] = [
@@ -75,6 +77,8 @@ const navigation: NavItem[] = [
   { title: "Agents", href: "/agents", icon: UserCheck, section: "operations" },
   { title: "Branding Cards", href: "/branding-cards", icon: CreditCard, section: "operations" },
   { title: "Invoicing", href: "/invoices", icon: Receipt, section: "finance" },
+  { title: "Proforma Invoices", href: "/proforma-invoices", icon: Receipt, section: "finance", writeOnly: true },
+  { title: "Wastage Log", href: "/wastage", icon: Trash2, section: "finance" },
   { title: "History", href: "/history", icon: History, section: "admin", adminOnly: true },
   { title: "Settings", href: "/settings", icon: Settings, section: "admin" },
 ];
@@ -131,7 +135,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   };
 
   const sections = navigation
-    .filter((item) => !item.adminOnly || role === "admin")
+    .filter((item) => (!item.adminOnly || role === "admin") && (!item.writeOnly || role === "admin" || role === "manager"))
     .reduce(
       (acc, item) => {
         if (!acc[item.section]) acc[item.section] = [];

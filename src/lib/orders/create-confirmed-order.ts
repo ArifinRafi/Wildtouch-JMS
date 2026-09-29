@@ -10,6 +10,7 @@ import { normalizeOrderSource } from "@/lib/order-source";
 
 export interface ConfirmedOrderInput {
   planogram?: { id?: string; name?: string };
+  grid?: { slots?: number[][][]; segQty?: number[][][]; rowQty?: number[][][] };
   client?: Record<string, unknown>;
   agent?: Record<string, unknown>;
   orderSource?: string;
@@ -22,8 +23,26 @@ export interface ConfirmedOrderInput {
   notes?: string;
 }
 
+export interface ApprovedProformaInput extends ConfirmedOrderInput {
+  sourceProformaId: string;
+  lineItems: Array<{ code: string; description: string; category: string; qtyOrdered: number; unitPrice: number; lineTotal: number }>;
+  subtotal: number;
+  vat: number;
+  total: number;
+  currency: string;
+}
+
 /** Create the normal priced order, invoice and Digital Whiteboard task. */
 export async function createConfirmedOrder(body: ConfirmedOrderInput) {
+  return createOrderAndInvoice(body);
+}
+
+/** Approval uses the saved quote prices, not today's client price list. Never expose this through the normal order endpoint. */
+export async function createConfirmedOrderFromProforma(body: ApprovedProformaInput) {
+  return createOrderAndInvoice(body, true);
+}
+
+async function createOrderAndInvoice(body: ConfirmedOrderInput | ApprovedProformaInput, quoted = false) {
   const lineItems = Array.isArray(body.lineItems) ? body.lineItems : [];
   if (!lineItems.length) throw new Error("no line items");
   if (!body.client?.name && !body.client?.clientId) throw new Error("client is required");
@@ -34,7 +53,7 @@ export async function createConfirmedOrder(body: ConfirmedOrderInput) {
   let currency = normalizeCurrency(body.client?.pricingCurrency);
   const clientId = String(body.client?.clientId ?? "").trim();
 
-  if (clientId) {
+  if (clientId && !quoted) {
     const clientDoc = await Client.findById(clientId).lean<{
       vatRate?: unknown;
       categoryPrices?: Record<string, number>;
@@ -48,49 +67,82 @@ export async function createConfirmedOrder(body: ConfirmedOrderInput) {
     if (clientDoc) currency = normalizeCurrency(clientDoc.pricingCurrency);
   }
 
-  const products = await Product.find({}, { name: 1, code: 1, group: 1 }).lean();
-  const normalizedLines = priceLinesByCategory(lineItems, buildCategoryLookup(products), categoryPrices);
+  const products = quoted ? [] : await Product.find({}, { name: 1, code: 1, group: 1 }).lean();
+  const normalizedLines = quoted
+    ? (body as ApprovedProformaInput).lineItems.map((line) => ({ ...line }))
+    : priceLinesByCategory(lineItems, buildCategoryLookup(products), categoryPrices);
   const subtotal = round2(normalizedLines.reduce((sum, line) => sum + line.lineTotal, 0));
   const shipping = round2(Math.max(0, Number(body.shipping) || 0));
+  if (quoted) {
+    vatRate = Math.max(0, Number(body.vatRate) || 0);
+    currency = normalizeCurrency((body as ApprovedProformaInput).currency);
+  }
   const vat = round2((subtotal * vatRate) / 100);
   const total = round2(subtotal + shipping + vat);
 
-  const orderNumber = await nextOrderNumber();
-  const order = await Order.create({
-    orderNumber,
-    status: "received",
-    planogram: { id: String(body.planogram?.id ?? ""), name: String(body.planogram?.name ?? "") },
-    client: body.client ?? {},
-    agent: body.agent ?? {},
-    orderSource: normalizeOrderSource(body.orderSource),
-    lineItems: normalizedLines,
-    componentRequirements: Array.isArray(body.componentRequirements) ? body.componentRequirements : [],
-    subtotal,
-    shipping,
-    vatRate,
-    vat,
-    total,
-    currency,
-    poNumber: String(body.poNumber ?? ""),
-    referenceNumber: String(body.referenceNumber ?? ""),
-    notes: String(body.notes ?? ""),
-  });
+  const sourceProformaId = quoted ? (body as ApprovedProformaInput).sourceProformaId : "";
+  let order = sourceProformaId ? await Order.findOne({ sourceProformaId }) : null;
+  let createdOrder = !order;
+  if (!order) {
+    try {
+      order = await Order.create({
+        orderNumber: await nextOrderNumber(),
+        ...(sourceProformaId ? { sourceProformaId } : {}),
+        status: "received",
+        planogram: { id: String(body.planogram?.id ?? ""), name: String(body.planogram?.name ?? "") },
+        grid: body.grid ?? {},
+        client: body.client ?? {},
+        agent: body.agent ?? {},
+        orderSource: normalizeOrderSource(body.orderSource),
+        lineItems: normalizedLines,
+        componentRequirements: Array.isArray(body.componentRequirements) ? body.componentRequirements : [],
+        subtotal,
+        shipping,
+        vatRate,
+        vat,
+        total,
+        currency,
+        poNumber: String(body.poNumber ?? ""),
+        referenceNumber: String(body.referenceNumber ?? ""),
+        notes: String(body.notes ?? ""),
+      });
+    } catch (error) {
+      // A retry may have raced with the first attempt. The unique source ID
+      // ensures both requests continue with the same order.
+      order = sourceProformaId ? await Order.findOne({ sourceProformaId }) : null;
+      if (!order) throw error;
+      createdOrder = false;
+    }
+  }
+  const orderNumber = order.orderNumber;
 
-  const invoiceNumber = await nextInvoiceNumber();
-  const invoice = await Invoice.create({
-    invoiceNumber,
-    orderId: order._id,
-    orderNumber,
-    client: body.client ?? {},
-    lineItems: groupIntoCategoryLines(normalizedLines),
-    subtotal,
-    shipping,
-    vatRate,
-    vat,
-    total,
-    currency,
-    status: "issued",
-  });
+  let invoice = sourceProformaId ? await Invoice.findOne({ sourceProformaId }) : null;
+  try {
+    if (!invoice) {
+      const invoiceNumber = await nextInvoiceNumber();
+      invoice = await Invoice.create({
+        invoiceNumber,
+        ...(sourceProformaId ? { sourceProformaId } : {}),
+        orderId: order._id,
+        orderNumber,
+        client: body.client ?? {},
+        lineItems: groupIntoCategoryLines(normalizedLines),
+        subtotal,
+        shipping,
+        vatRate,
+        vat,
+        total,
+        currency,
+        status: "issued",
+      });
+    }
+  } catch (error) {
+    invoice = sourceProformaId ? await Invoice.findOne({ sourceProformaId }) : null;
+    if (!invoice) {
+      if (!quoted && createdOrder) await Order.deleteOne({ _id: order._id });
+      throw error;
+    }
+  }
 
   try {
     await ensureOrderOnWhiteboard({
@@ -103,18 +155,22 @@ export async function createConfirmedOrder(body: ConfirmedOrderInput) {
       lineItems: normalizedLines,
     });
   } catch (error) {
-    await Promise.all([Invoice.deleteOne({ _id: invoice._id }), Order.deleteOne({ _id: order._id })]);
+    if (!quoted) await Promise.all([Invoice.deleteOne({ _id: invoice._id }), Order.deleteOne({ _id: order._id })]);
     throw new Error("could not add order to the digital whiteboard", { cause: error });
   }
 
-  await logActivity({
-    action: "confirmed",
-    entityType: "order",
-    entityName: orderNumber,
-    entityId: String(order._id),
-    quantity: normalizedLines.reduce((sum, line) => sum + line.qtyOrdered, 0),
-    details: `for ${body.client?.name || body.client?.clientId || "client"}${body.agent?.name ? ` · agent ${body.agent.name}` : ""} — invoice ${invoiceNumber} created`,
-  });
+  try {
+    if (!quoted || createdOrder) await logActivity({
+      action: "confirmed",
+      entityType: "order",
+      entityName: orderNumber,
+      entityId: String(order._id),
+      quantity: normalizedLines.reduce((sum, line) => sum + line.qtyOrdered, 0),
+      details: `for ${body.client?.name || body.client?.clientId || "client"}${body.agent?.name ? ` · agent ${body.agent.name}` : ""} — invoice ${invoice.invoiceNumber} created`,
+    });
+  } catch (error) {
+    console.error("Order created but activity logging failed", error);
+  }
 
   return { order: serializeOrder(order.toObject()), invoice: serializeInvoice(invoice.toObject()) };
 }

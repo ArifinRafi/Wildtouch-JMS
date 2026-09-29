@@ -30,16 +30,25 @@ export function Header({ onMenuClick }: HeaderProps) {
     deliveryDate: string;
     client?: { name?: string; clientId?: string };
   }>>([]);
+  const [designAlerts, setDesignAlerts] = useState<Array<{
+    id: string;
+    name: string;
+    stage: string;
+    alertDate: string;
+  }>>([]);
   useEffect(() => {
     fetch("/api/users/me").then((r) => (r.ok ? r.json() : null)).then((d) => d && setMe(d)).catch(() => {});
     const refreshAlerts = () => {
       fetch("/api/back-orders/alerts").then((r) => (r.ok ? r.json() : [])).then(setBackOrderAlerts).catch(() => {});
+      fetch("/api/designs/alerts").then((r) => (r.ok ? r.json() : [])).then(setDesignAlerts).catch(() => {});
     };
     refreshAlerts();
     window.addEventListener("back-orders-changed", refreshAlerts);
+    window.addEventListener("designs-changed", refreshAlerts);
     const timer = window.setInterval(refreshAlerts, 60_000);
     return () => {
       window.removeEventListener("back-orders-changed", refreshAlerts);
+      window.removeEventListener("designs-changed", refreshAlerts);
       window.clearInterval(timer);
     };
   }, []);
@@ -48,6 +57,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   const role = me?.role ?? session.role;
   const isAdmin = (me?.role ?? session.role) === "admin";
   const initials = (username || "U").slice(0, 2).toUpperCase();
+  const notificationCount = backOrderAlerts.length + designAlerts.length;
   return (
     <motion.header
       initial={{ y: -20, opacity: 0 }}
@@ -82,25 +92,37 @@ export function Header({ onMenuClick }: HeaderProps) {
         <DropdownMenu>
           <DropdownMenuTrigger className="relative inline-flex items-center justify-center rounded-xl h-9 w-9 text-sm font-medium transition-colors hover:bg-accent/60 focus-visible:outline-none">
             <Bell className="h-4.5 w-4.5 text-muted-foreground" />
-            {backOrderAlerts.length > 0 && (
+            {notificationCount > 0 && (
               <span className="absolute -right-0.5 -top-0.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-gradient-to-br from-red-500 to-pink-500 px-1 text-[9px] font-bold text-white shadow-sm">
-                {backOrderAlerts.length > 9 ? "9+" : backOrderAlerts.length}
+                {notificationCount > 9 ? "9+" : notificationCount}
               </span>
             )}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80 glass-strong bg-popover/95 border-border/40 rounded-2xl p-1">
             <DropdownMenuLabel className="px-3 py-2">Notifications</DropdownMenuLabel>
             <DropdownMenuSeparator className="opacity-30" />
-            {backOrderAlerts.length === 0 ? (
-              <DropdownMenuItem className="p-3 text-xs text-muted-foreground">No back orders due this month.</DropdownMenuItem>
-            ) : backOrderAlerts.map((order) => (
-              <DropdownMenuItem key={order.id} render={<Link href="/back-orders" />} className="flex flex-col items-start gap-1 p-3 rounded-xl cursor-pointer">
-                <span className="text-sm font-medium">Back order due · {order.backOrderNumber}</span>
-                <span className="text-xs text-muted-foreground">
-                  {order.client?.name || order.client?.clientId || "Client"} · {new Date(`${order.deliveryDate}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                </span>
-              </DropdownMenuItem>
-            ))}
+            {notificationCount === 0 ? (
+              <DropdownMenuItem className="p-3 text-xs text-muted-foreground">No alerts right now.</DropdownMenuItem>
+            ) : (
+              <>
+                {designAlerts.map((design) => (
+                  <DropdownMenuItem key={`design-${design.id}`} render={<Link href="/design-tracker" />} className="flex flex-col items-start gap-1 p-3 rounded-xl cursor-pointer">
+                    <span className="text-sm font-medium">Design alert · {design.name || "Untitled design"}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {design.stage} · {new Date(`${design.alertDate}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+                {backOrderAlerts.map((order) => (
+                  <DropdownMenuItem key={`back-order-${order.id}`} render={<Link href="/back-orders" />} className="flex flex-col items-start gap-1 p-3 rounded-xl cursor-pointer">
+                    <span className="text-sm font-medium">Back order due · {order.backOrderNumber}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {order.client?.name || order.client?.clientId || "Client"} · {new Date(`${order.deliveryDate}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
 

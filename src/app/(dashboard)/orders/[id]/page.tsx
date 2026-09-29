@@ -34,6 +34,7 @@ import { useRole } from "@/lib/hooks/use-role";
 import { thumbUrl } from "@/lib/cloudinary";
 import {
   resolvePlanogramForPdf,
+  applyPlanogramQuantities,
   buildPlanogramSidesHtml,
   groupOrderLinesForPdf,
   type PdfPlanogram,
@@ -180,7 +181,7 @@ export default function OrderViewPage() {
         barcodeImage: client.barcodeImage || liveClient?.barcodeImage || "",
         orderGroups: groupOrderLinesForPdf(order.lineItems),
       },
-      sidesPg,
+      applyPlanogramQuantities(sidesPg, order.grid),
       (product) => {
         const url = productImages[`name:${product.toLowerCase()}`] ?? "";
         return url ? thumbUrl(url, 96) : "";

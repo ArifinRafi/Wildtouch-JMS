@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isValidObjectId } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Task, serializeTask, TASK_STATUS, TASK_PRIORITY } from "@/lib/models/Task";
+import { Client } from "@/lib/models/Client";
 import { logActivity } from "@/lib/activity";
 
 export async function PATCH(
@@ -18,6 +19,13 @@ export async function PATCH(
   const patch: Record<string, unknown> = {};
   if (body.date !== undefined) patch.date = String(body.date).trim();
   if (body.employeeName !== undefined) patch.employeeName = String(body.employeeName).trim();
+  if (body.clientId !== undefined) {
+    const clientId = String(body.clientId).trim();
+    const client = clientId ? await Client.findById(clientId, { name: 1 }).lean() : null;
+    if (!client) return NextResponse.json({ error: "a valid client is required" }, { status: 400 });
+    patch.clientId = clientId;
+    patch.clientName = String(client.name ?? "").trim();
+  }
   if (body.taskName !== undefined) patch.taskName = String(body.taskName).trim();
   if (body.note !== undefined) patch.note = String(body.note);
   if (body.status !== undefined && TASK_STATUS.includes(body.status)) patch.status = body.status;

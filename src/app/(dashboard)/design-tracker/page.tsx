@@ -28,18 +28,26 @@ import { cn } from "@/lib/utils";
 import { uploadImage, thumbUrl } from "@/lib/cloudinary";
 import { useRole } from "@/lib/hooks/use-role";
 import { useDesigns, type Design, type NewDesign } from "@/lib/hooks/use-designs";
+import {
+  DESIGN_DEFAULT_STAGE,
+  DESIGN_FINAL_STAGE,
+  DESIGN_RIVER_STAGE,
+  DESIGN_STAGES,
+} from "@/lib/design-stage";
 
 const cellInput = "h-8 w-full rounded-lg border border-border/40 bg-muted/30 px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";
 
-// Design pipeline stages (kept in sync with the server-side list). The final
-// stage means the design is finished → available in River.
-const DESIGN_STAGES = ["New Design Request", "Research", "Feedback", "New Design Template"] as const;
-const DESIGN_FINAL_STAGE = "New Design Template";
 const STAGE_STYLE: Record<string, string> = {
-  "New Design Request": "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400",
+  "New concept idea": "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400",
   "Research": "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400",
-  "Feedback": "bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400",
-  "New Design Template": "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
+  "Template": "bg-pink-500/10 border-pink-500/30 text-pink-600 dark:text-pink-400",
+  "Feedback to client": "bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400",
+  "Feedback from client": "bg-violet-500/10 border-violet-500/30 text-violet-600 dark:text-violet-400",
+  "Feedback to river": "bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400",
+  "Feedback from river": "bg-sky-500/10 border-sky-500/30 text-sky-600 dark:text-sky-400",
+  "CAD": "bg-indigo-500/10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400",
+  "Metal Cut": "bg-orange-500/10 border-orange-500/30 text-orange-600 dark:text-orange-400",
+  "Sample": "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
 };
 
 function fmtHistoryDate(iso: string | null): string {
@@ -140,6 +148,7 @@ export default function DesignTrackerPage() {
       notes: (draft.notes ?? "").trim(), addedToCodeSheet: (draft.addedToCodeSheet ?? "").trim(),
       addedToNewDesignBrochure: (draft.addedToNewDesignBrochure ?? "").trim(),
       addedToThemedBrochure: (draft.addedToThemedBrochure ?? "").trim(),
+      alertDate: draft.alertDate ?? "",
     };
     try {
       await ensureCategory(payload.categoryType ?? "");
@@ -157,7 +166,7 @@ export default function DesignTrackerPage() {
   }, []);
 
   const stageIndex = (s: string) => DESIGN_STAGES.indexOf(s as (typeof DESIGN_STAGES)[number]);
-  const currentStage = (d: Design) => d.stage || (d.completed ? DESIGN_FINAL_STAGE : "New Design Request");
+  const currentStage = (d: Design) => d.stage || (d.completed ? DESIGN_FINAL_STAGE : DESIGN_DEFAULT_STAGE);
 
   // Persist a stage change; if the row is mid-edit, save the draft fields too so nothing is lost.
   const commitStage = useCallback(async (d: Design, stage: string, stageNote?: string) => {
@@ -171,6 +180,7 @@ export default function DesignTrackerPage() {
         notes: (draft.notes ?? "").trim(), addedToCodeSheet: (draft.addedToCodeSheet ?? "").trim(),
         addedToNewDesignBrochure: (draft.addedToNewDesignBrochure ?? "").trim(),
         addedToThemedBrochure: (draft.addedToThemedBrochure ?? "").trim(),
+        alertDate: draft.alertDate ?? "",
       });
       await ensureCategory(patch.categoryType ?? "");
       setEditingId(null); setNewRowId(null); setDraft({});
@@ -209,7 +219,7 @@ export default function DesignTrackerPage() {
             <PenTool className="h-7 w-7 text-primary" /> Design Tracker
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            New component designs · <span className="font-semibold text-primary">{designs.length}</span> total · {completedCount} completed → available in River
+            New component designs · <span className="font-semibold text-primary">{designs.length}</span> total · Template → River · Sample → completed
           </p>
         </div>
         <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
@@ -254,14 +264,14 @@ export default function DesignTrackerPage() {
             <table className="w-full min-w-[1320px] border-collapse">
               <thead>
                 <tr className="border-b border-border/30 bg-muted/20">
-                  {["Design", "Client", "Category", "Notes", "Code Sheet", "New Brochure", "Ordered", "Stage", "History", ""].map((h, i) => (
+                  {["Design", "Client", "Category", "Notes", "Code Sheet", "New Brochure", "Ordered", "Alert date", "Stage", "History", ""].map((h, i) => (
                     <th key={i} className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={10} className="py-12 text-center text-sm text-muted-foreground">No {tab === "completed" ? "completed" : "live"} designs.</td></tr>
+                  <tr><td colSpan={11} className="py-12 text-center text-sm text-muted-foreground">No {tab === "completed" ? "completed" : "live"} designs.</td></tr>
                 )}
                 <AnimatePresence mode="popLayout">
                   {filtered.map((d) => {
@@ -329,19 +339,29 @@ export default function DesignTrackerPage() {
                             )}
                           </td>
                         ))}
+                        {/* Alert date — due and overdue live designs appear in the header notifications. */}
+                        <td className="px-3 py-3 min-w-[145px]">
+                          {editing ? (
+                            <input type="date" value={v.alertDate ?? ""} onChange={(e) => df("alertDate", e.target.value)} className={cellInput} />
+                          ) : d.alertDate ? (
+                            <span className="text-xs font-medium tabular-nums">{new Date(`${d.alertDate}T00:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</span>
+                          ) : (
+                            <span className="text-muted-foreground/40 text-xs">—</span>
+                          )}
+                        </td>
                         {/* Stage — an immediate control; moving to an earlier stage prompts for a note. */}
                         <td className="px-3 py-3 min-w-[190px]">
                           {(() => {
-                            const cur = d.stage || (d.completed ? DESIGN_FINAL_STAGE : "New Design Request");
+                            const cur = d.stage || (d.completed ? DESIGN_FINAL_STAGE : DESIGN_DEFAULT_STAGE);
                             return (
                               <select
                                 value={cur}
                                 onChange={(e) => requestStage(d, e.target.value)}
-                                title={cur === DESIGN_FINAL_STAGE ? "Finished — available in River" : "Set the design stage"}
-                                className={cn("h-8 w-full rounded-lg border px-2 text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30", STAGE_STYLE[cur] ?? STAGE_STYLE["New Design Request"])}
+                                title={cur === DESIGN_RIVER_STAGE ? "Available in River" : cur === DESIGN_FINAL_STAGE ? "Design completed" : "Set the design stage"}
+                                className={cn("h-8 w-full rounded-lg border px-2 text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30", STAGE_STYLE[cur] ?? STAGE_STYLE[DESIGN_DEFAULT_STAGE])}
                               >
                                 {DESIGN_STAGES.map((s) => (
-                                  <option key={s} value={s}>{s === DESIGN_FINAL_STAGE ? `${s} → River` : s}</option>
+                                  <option key={s} value={s}>{s === DESIGN_RIVER_STAGE ? `${s} → River` : s === DESIGN_FINAL_STAGE ? `${s} → Completed` : s}</option>
                                 ))}
                               </select>
                             );

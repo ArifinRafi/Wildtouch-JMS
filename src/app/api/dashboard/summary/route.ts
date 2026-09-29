@@ -6,6 +6,8 @@ import { Client } from "@/lib/models/Client";
 import { Product } from "@/lib/models/Product";
 import { Component } from "@/lib/models/Component";
 import { Task } from "@/lib/models/Task";
+import { Design } from "@/lib/models/Design";
+import { DESIGN_FINAL_STAGE } from "@/lib/design-stage";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +33,7 @@ export async function GET() {
     monthInvoices,
     lowStockDocs,
     pendingTasks,
+    designWorkInProgress,
   ] = await Promise.all([
     Order.countDocuments({ status: { $nin: ["delivered", "archived"] } }),
     Order.countDocuments(),
@@ -45,6 +48,7 @@ export async function GET() {
       .limit(6)
       .lean(),
     Task.countDocuments({ status: "pending" }),
+    Design.countDocuments({ stage: { $ne: DESIGN_FINAL_STAGE } }),
   ]);
 
   // Revenue series: last 7 days (oldest → newest)
@@ -77,5 +81,6 @@ export async function GET() {
     revenueSeries,
     lowStock,
     pendingTasks,
+    designWorkInProgress,
   });
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { ListChecks, Plus } from "lucide-react";
+import { ListChecks, PenTool, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OrdersToday } from "@/components/dashboard/orders-today";
 import { StockAlerts, type StockAlertItem } from "@/components/dashboard/stock-alerts";
@@ -22,6 +22,7 @@ interface DashboardSummary {
   revenueSeries: number[];
   lowStock: StockAlertItem[];
   pendingTasks: number;
+  designWorkInProgress: number;
 }
 
 const EMPTY: DashboardSummary = {
@@ -35,6 +36,7 @@ const EMPTY: DashboardSummary = {
   revenueSeries: [0, 0, 0, 0, 0, 0, 0],
   lowStock: [],
   pendingTasks: 0,
+  designWorkInProgress: 0,
 };
 
 export default function DashboardPage() {
@@ -86,25 +88,39 @@ export default function DashboardPage() {
       {/* The live Digital Whiteboard is the dashboard's primary workspace. */}
       <DigitalWhiteboardPage />
 
-      {/* Total pending tasks across every date and employee. */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="flex w-full max-w-sm items-center justify-between rounded-2xl border border-amber-500/25 bg-card/70 p-5 glass shadow-sm"
-      >
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Pending Tasks
-          </p>
-          <p className="mt-2 text-4xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
-            {summary.pendingTasks}
-          </p>
-        </div>
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-          <ListChecks className="h-6 w-6" />
-        </div>
-      </motion.div>
+      <div className="grid w-full max-w-2xl gap-4 sm:grid-cols-2">
+        {/* Total pending tasks across every date and employee. */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="flex items-center justify-between rounded-2xl border border-amber-500/25 bg-card/70 p-5 glass shadow-sm"
+        >
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pending Tasks</p>
+            <p className="mt-2 text-4xl font-bold tabular-nums text-amber-600 dark:text-amber-400">{summary.pendingTasks}</p>
+          </div>
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            <ListChecks className="h-6 w-6" />
+          </div>
+        </motion.div>
+
+        {/* Only the total number of live Design Tracker items. */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.05 }}
+          className="flex items-center justify-between rounded-2xl border border-violet-500/25 bg-card/70 p-5 glass shadow-sm"
+        >
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Design work in Progress</p>
+            <p className="mt-2 text-4xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{summary.designWorkInProgress}</p>
+          </div>
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400">
+            <PenTool className="h-6 w-6" />
+          </div>
+        </motion.div>
+      </div>
 
       {/* Revenue is financial information and is visible to admins only. */}
       {isAdmin && <RevenueChart series={summary.revenueSeries} />}

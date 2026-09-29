@@ -27,7 +27,7 @@ export default function NewOrderLayout({ children }: { children: React.ReactNode
 function NewOrderFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { draft, patchDraft } = useOrderDraft();
-  const steps = draft.isBackOrder ? NEW_ORDER_STEPS.filter((step) => step.key !== "inventory") : [...NEW_ORDER_STEPS];
+  const steps = draft.isBackOrder || draft.isProforma ? NEW_ORDER_STEPS.filter((step) => step.key !== "inventory") : [...NEW_ORDER_STEPS];
   const current = Math.max(0, steps.findIndex((step) => pathname.startsWith(step.path)));
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -47,29 +47,29 @@ function NewOrderFrame({ children }: { children: React.ReactNode }) {
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <Link
-            href="/orders"
+            href={draft.isProforma ? "/proforma-invoices" : "/orders"}
             className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mb-3 transition-colors"
           >
-            <ArrowLeft className="h-3.5 w-3.5" /> Back to Orders
+            <ArrowLeft className="h-3.5 w-3.5" /> Back to {draft.isProforma ? "Proforma Invoices" : "Orders"}
           </Link>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground/90 to-foreground/60 bg-clip-text text-transparent">
-                {draft.isBackOrder ? "Create Back Order" : "Create New Order"}
+                {draft.isProforma ? (draft.editingProformaId ? "Edit Proforma Invoice" : "Create Proforma Invoice") : draft.isBackOrder ? "Create Back Order" : "Create New Order"}
               </h1>
               <p className="text-sm text-muted-foreground mt-1">
                 Step {current + 1} of {steps.length} · {steps[current]?.title}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button
+              {!draft.isProforma && <Button
                 type="button"
                 variant={draft.isBackOrder ? "default" : "outline"}
                 onClick={toggleBackOrder}
                 className="gap-2 rounded-xl"
               >
                 <CalendarClock className="h-4 w-4" /> Back Order
-              </Button>
+              </Button>}
               {draft.isBackOrder && (
                 <Input
                   aria-label="Back order delivery date"
@@ -82,6 +82,11 @@ function NewOrderFrame({ children }: { children: React.ReactNode }) {
               )}
             </div>
           </div>
+          {draft.isProforma && (
+            <div className="mt-4 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-3 text-xs text-indigo-900 dark:text-indigo-100">
+              This is a quotation only. Saving it does not create a real order, invoice or Digital Whiteboard task. Inventory availability is not checked when saving or approving a proforma.
+            </div>
+          )}
           {draft.isBackOrder && (
             <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-800 dark:text-amber-200">
               Inventory availability will be skipped. This order will stay in Back Orders until it is marked delivered.

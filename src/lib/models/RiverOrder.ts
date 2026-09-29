@@ -20,13 +20,16 @@ const RiverOrderSchema = new Schema(
     quantity: { type: Number, default: 0, min: 0 },
     quantityReceived: { type: Number, default: 0, min: 0 },
     priority: { type: String, default: "" },
-    /** Shipment method to River (free text, e.g. Air / Sea). */
+    /** Shipment method and its dedicated shipment quantity/date. */
     shipmentMethod: { type: String, default: "" },
+    shipmentQuantity: { type: Number, default: 0, min: 0 },
+    shipmentDate: { type: String, default: "" },
     progressNotes: { type: String, default: "" },
     /** Dated progress log (date + note entries). */
     notesLog: { type: [RiverNoteSchema], default: [] },
     dateRequested: { type: String, default: "" },
     datePaid: { type: String, default: "" },
+    paid: { type: Boolean, default: false },
     valueRmb: { type: Number, default: 0, min: 0 },
     valueGbp: { type: Number, default: 0, min: 0 },
     /** Linked main-inventory component that receiving tops up (optional). */
@@ -59,10 +62,13 @@ export function serializeRiverOrder(doc: {
   quantityReceived?: number;
   priority?: string;
   shipmentMethod?: string;
+  shipmentQuantity?: number;
+  shipmentDate?: string;
   progressNotes?: string;
   notesLog?: { date?: string; note?: string }[] | null;
   dateRequested?: string;
   datePaid?: string;
+  paid?: boolean;
   valueRmb?: number;
   valueGbp?: number;
   componentId?: string;
@@ -85,10 +91,13 @@ export function serializeRiverOrder(doc: {
     status: riverStatus(quantity, quantityReceived),
     priority: doc.priority ?? "",
     shipmentMethod: doc.shipmentMethod ?? "",
+    shipmentQuantity: doc.shipmentQuantity ?? 0,
+    shipmentDate: doc.shipmentDate ?? "",
     progressNotes: doc.progressNotes ?? "",
     notesLog: (doc.notesLog ?? []).map((n) => ({ date: n?.date ?? "", note: n?.note ?? "" })),
     dateRequested: doc.dateRequested ?? "",
     datePaid: doc.datePaid ?? "",
+    paid: doc.paid ?? Boolean(doc.datePaid),
     valueRmb: doc.valueRmb ?? 0,
     valueGbp: doc.valueGbp ?? 0,
     componentId: doc.componentId ?? "",
