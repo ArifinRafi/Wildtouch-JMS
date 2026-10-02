@@ -441,13 +441,17 @@ ${order.notes ? `<div class="box"><h4>Notes</h4><div class="muted">${esc(order.n
           </div>
           {(() => {
             const total = order.total || 0;
-            const invoiced = Math.min(total, order.amountInvoiced ?? 0);
-            const remaining = Math.max(0, total - invoiced);
-            const pct = total > 0 ? Math.min(100, Math.round((invoiced / total) * 100)) : 0;
+            const credit = Math.min(total, order.creditApplied ?? 0);
+            const payable = Math.max(0, total - credit);
+            const invoiced = Math.min(payable, order.amountInvoiced ?? 0);
+            const remaining = Math.max(0, payable - invoiced);
+            const pct = payable > 0 ? Math.min(100, Math.round((invoiced / payable) * 100)) : 100;
             return (
               <>
                 <div className="space-y-1.5 text-sm">
                   <div className="flex justify-between"><span className="text-muted-foreground">Order total</span><span className="font-bold tabular-nums">{formatCurrency(total, order.currency)}</span></div>
+                  {credit > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Credit note</span><span className="font-semibold tabular-nums text-emerald-600">− {formatCurrency(credit, order.currency)}</span></div>}
+                  {credit > 0 && <div className="flex justify-between"><span className="text-muted-foreground">After credit</span><span className="font-bold tabular-nums">{formatCurrency(payable, order.currency)}</span></div>}
                   <div className="flex justify-between"><span className="text-muted-foreground">Invoiced</span><span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{formatCurrency(invoiced, order.currency)}</span></div>
                   <div className="flex justify-between border-t border-border/30 pt-1.5"><span className="font-semibold">Remaining</span><span className="font-black tabular-nums text-primary">{formatCurrency(remaining, order.currency)}</span></div>
                 </div>

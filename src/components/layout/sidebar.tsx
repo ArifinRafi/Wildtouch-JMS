@@ -29,6 +29,8 @@ import {
   History,
   BookOpen,
   Trash2,
+  Wallet,
+  FileMinus2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -79,6 +81,8 @@ const navigation: NavItem[] = [
   { title: "Invoicing", href: "/invoices", icon: Receipt, section: "finance" },
   { title: "Proforma Invoices", href: "/proforma-invoices", icon: Receipt, section: "finance", writeOnly: true },
   { title: "Wastage Log", href: "/wastage", icon: Trash2, section: "finance" },
+  { title: "Costs of Business", href: "/business-costs", icon: Wallet, section: "finance" },
+  { title: "Credit Notes", href: "/credit-notes", icon: FileMinus2, section: "finance", adminOnly: true },
   { title: "History", href: "/history", icon: History, section: "admin", adminOnly: true },
   { title: "Settings", href: "/settings", icon: Settings, section: "admin" },
 ];

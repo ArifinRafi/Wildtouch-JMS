@@ -51,6 +51,17 @@ const InvoiceSchema = new Schema(
     /** Computed VAT amount = subtotal * vatRate / 100. */
     vat: { type: Number, default: 0, min: 0 },
     total: { type: Number, default: 0, min: 0 },
+    /** Credit from the client's account applied after VAT, never changing taxable line prices. */
+    creditApplied: { type: Number, default: 0, min: 0 },
+    amountDue: { type: Number, default: 0, min: 0 },
+    creditNoteNumbers: { type: [String], default: [] },
+    /** New main invoices are finalized after credit allocation; legacy invoices remain final. */
+    creditFinalized: { type: Boolean, default: true },
+    creditStartedAt: { type: Date, default: null },
+    creditToken: { type: String, default: "" },
+    creditReversalPending: { type: Boolean, default: false },
+    /** Partial invoices reference credit already applied to the main order invoice. */
+    priorCreditApplied: { type: Number, default: 0, min: 0 },
     currency: { type: String, default: "GBP" },
     status: { type: String, enum: ["issued", "remittance", "paid", "partial_payment_outstanding", "void"], default: "issued" },
     comments: { type: [InvoiceCommentSchema], default: [] },
@@ -90,6 +101,12 @@ export function serializeInvoice(doc: {
   vatRate?: number;
   vat?: number;
   total?: number;
+  creditApplied?: number;
+  amountDue?: number;
+  creditNoteNumbers?: string[];
+  creditFinalized?: boolean;
+  creditReversalPending?: boolean;
+  priorCreditApplied?: number;
   currency?: string;
   status?: string;
   comments?: Array<{ text?: string; createdAt?: Date | string; createdBy?: string }> | null;
@@ -112,6 +129,12 @@ export function serializeInvoice(doc: {
     vatRate: doc.vatRate ?? 0,
     vat: doc.vat ?? 0,
     total: doc.total ?? 0,
+    creditApplied: doc.creditApplied ?? 0,
+    amountDue: doc.amountDue ?? (doc.isPartial ? doc.paymentAmount ?? 0 : doc.total ?? 0),
+    creditNoteNumbers: doc.creditNoteNumbers ?? [],
+    creditFinalized: doc.creditFinalized ?? true,
+    creditReversalPending: doc.creditReversalPending ?? false,
+    priorCreditApplied: doc.priorCreditApplied ?? 0,
     currency: doc.currency ?? "GBP",
     status: doc.status ?? "issued",
     comments: (doc.comments ?? []).map((comment) => ({

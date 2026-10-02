@@ -3,6 +3,8 @@ import { isValidObjectId } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { requireAdmin, isResponse, sessionUser } from "@/lib/authz";
 import { Order, serializeOrder } from "@/lib/models/Order";
+import { Invoice } from "@/lib/models/Invoice";
+import { restoreInvoiceCredit } from "@/lib/credit-notes";
 import { logActivity } from "@/lib/activity";
 import { normalizeOrderSource } from "@/lib/order-source";
 
@@ -23,7 +25,7 @@ export async function GET(
   // Viewers can use the order's planogram, but must not receive invoice/pricing data.
   if (user?.role === "viewer") {
     const safeOrder: Record<string, unknown> = { ...serialized };
-    for (const field of ["subtotal", "shipping", "vatRate", "vat", "total", "amountInvoiced"]) {
+    for (const field of ["subtotal", "shipping", "vatRate", "vat", "total", "amountInvoiced", "creditApplied"]) {
       delete safeOrder[field];
     }
     safeOrder.lineItems = serialized.lineItems.map((item) => {
@@ -68,6 +70,13 @@ export async function PATCH(
     patch.inventoryDeducted = Boolean(body.inventoryDeducted);
   }
 
+  if (["client", "lineItems", "subtotal", "total"].some((field) => field in patch)) {
+    const existing = await Order.findById(id, { creditApplied: 1 }).lean();
+    if (existing && (existing.creditApplied ?? 0) > 0) {
+      return NextResponse.json({ error: "credited order pricing and client cannot be changed; void and reissue its invoice first" }, { status: 409 });
+    }
+  }
+
   const updated = await Order.findByIdAndUpdate(id, patch, { new: true }).lean();
   if (!updated) return NextResponse.json({ error: "not found" }, { status: 404 });
   await logActivity({
@@ -92,6 +101,18 @@ export async function DELETE(
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
   }
   await connectDB();
+  const existing = await Order.findById(id).lean();
+  if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const invoices = await Invoice.find({ orderId: id }).lean();
+  if (invoices.some((invoice) => invoice.creditFinalized === false)) {
+    return NextResponse.json({ error: "credit allocation is in progress; try deleting again shortly" }, { status: 409 });
+  }
+  const creditedIds = invoices.filter((invoice) => (invoice.creditApplied ?? 0) > 0 || invoice.creditReversalPending).map((invoice) => String(invoice._id));
+  if (creditedIds.length) {
+    await Invoice.updateMany({ _id: { $in: creditedIds } }, { $set: { creditReversalPending: true } });
+    for (const invoiceId of creditedIds) await restoreInvoiceCredit(invoiceId);
+  }
+  await Invoice.deleteMany({ orderId: id });
   const deleted = await Order.findByIdAndDelete(id).lean();
   if (!deleted) return NextResponse.json({ error: "not found" }, { status: 404 });
   await logActivity({

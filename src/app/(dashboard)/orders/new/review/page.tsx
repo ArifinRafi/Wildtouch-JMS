@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -31,6 +31,7 @@ export default function ReviewStepPage() {
   const { products } = useProducts();
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [availableCredit, setAvailableCredit] = useState(0);
 
   const lineItems = draft.lineItems ?? [];
   const totalUnits = lineItems.reduce((s, li) => s + li.qtyOrdered, 0);
@@ -42,6 +43,16 @@ export default function ReviewStepPage() {
   const round2 = (n: number) => Math.round(n * 100) / 100;
   const liveClient = clients.find((c) => c.id === draft.client?.clientId);
   const currency = normalizeCurrency(draft.isProforma ? draft.currency : liveClient?.pricingCurrency);
+  useEffect(() => {
+    const clientId = draft.client?.clientId;
+    if (!clientId) { setAvailableCredit(0); return; }
+    let active = true;
+    fetch(`/api/credit-notes/balances?clientId=${encodeURIComponent(clientId)}`, { cache: "no-store" })
+      .then(async (response): Promise<Record<string, Record<string, number>>> => response.ok ? response.json() : {})
+      .then((balances) => { if (active) setAvailableCredit(Number(balances[clientId]?.[currency] ?? 0)); })
+      .catch(() => { if (active) setAvailableCredit(0); });
+    return () => { active = false; };
+  }, [draft.client?.clientId, currency]);
   const vatRate = draft.isProforma ? (draft.vatRate ?? 0) : (liveClient?.vatRate ?? draft.client?.vatRate ?? 0);
   const pricedLines = priceLinesByCategory(
     draft.isProforma ? lineItems.map((line) => ({ ...line, category: line.category || line.description })) : lineItems,
@@ -276,6 +287,7 @@ export default function ReviewStepPage() {
           {draft.isProforma && <div className="flex justify-between py-0.5"><span className="text-muted-foreground">Shipping</span><span className="tabular-nums font-medium">{money(draft.shipping)}</span></div>}
           <div className="flex justify-between py-0.5"><span className="text-muted-foreground">VAT ({vatRate}%)</span><span className="tabular-nums font-medium">{money(vat)}</span></div>
           <div className="flex justify-between py-1 mt-1 border-t border-border/30 font-bold"><span>Total incl. VAT</span><span className="tabular-nums text-primary">{money(grandTotal)}</span></div>
+          {availableCredit > 0 && <><div className="flex justify-between py-0.5 text-emerald-700"><span>Available credit (estimate)</span><span className="tabular-nums">− {money(Math.min(availableCredit, grandTotal))}</span></div><div className="flex justify-between border-t border-border/30 py-1 font-bold"><span>Estimated amount due</span><span className="tabular-nums text-primary">{money(Math.max(0, grandTotal - availableCredit))}</span></div><p className="mt-1 text-[10px] text-muted-foreground">Credit is reserved only when the actual invoice is issued; another order may change this estimate.</p></>}
         </div>
         {!draft.isProforma && <p className="text-[11px] text-muted-foreground mt-3">
           Prices come from this client&rsquo;s <span className="font-semibold">Category Pricing</span> (client profile → Category Pricing);

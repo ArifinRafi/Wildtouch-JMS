@@ -23,6 +23,9 @@ interface InvoiceListItem {
   orderNumber: string;
   client: { name?: string };
   total: number;
+  creditApplied?: number;
+  amountDue?: number;
+  creditFinalized?: boolean;
   status: string;
   comments?: InvoiceComment[];
   isPartial?: boolean;
@@ -145,7 +148,7 @@ export default function InvoicesPage() {
     (totals, invoice) => {
       totals[normalizeCurrency(invoice.currency)] += invoice.isPartial
         ? invoice.paymentAmount || 0
-        : invoice.total || 0;
+        : invoice.amountDue ?? invoice.total ?? 0;
       return totals;
     },
     { GBP: 0, EUR: 0 },
@@ -250,7 +253,9 @@ export default function InvoicesPage() {
                       <td className="px-5 py-3 text-sm font-medium">{inv.client?.name || "—"}</td>
                       <td className="px-5 py-3 text-xs text-muted-foreground">{fmtDate(inv.createdAt)}</td>
                       <td className="px-5 py-3 text-right text-sm font-semibold tabular-nums">
-                        {formatCurrency(inv.isPartial ? inv.paymentAmount || 0 : inv.total || 0, inv.currency)}
+                        {formatCurrency(inv.isPartial ? inv.paymentAmount || 0 : inv.amountDue ?? inv.total ?? 0, inv.currency)}
+                        {!inv.isPartial && (inv.creditApplied ?? 0) > 0 && <p className="mt-0.5 text-[10px] font-medium text-emerald-700">{formatCurrency(inv.creditApplied ?? 0, inv.currency)} credit applied</p>}
+                        {inv.creditFinalized === false && <p className="mt-0.5 text-[10px] font-medium text-amber-700">Credit pending</p>}
                         {inv.isPartial && (
                           <p className="text-[10px] font-medium text-muted-foreground mt-0.5">
                             of {formatCurrency(inv.total || 0, inv.currency)} · {formatCurrency(inv.balanceDue || 0, inv.currency)} left

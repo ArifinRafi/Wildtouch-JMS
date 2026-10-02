@@ -3,11 +3,28 @@ import { connectDB } from "@/lib/db";
 import { Order, nextOrderNumber, serializeOrder } from "@/lib/models/Order";
 import { ensureOrderOnWhiteboard } from "@/lib/models/WhiteboardOrder";
 import { normalizeOrderSource } from "@/lib/order-source";
+import { sessionUser } from "@/lib/authz";
 
 export async function GET() {
   await connectDB();
   const docs = await Order.find({}).sort({ createdAt: -1 }).lean();
-  return NextResponse.json(docs.map(serializeOrder));
+  const orders = docs.map(serializeOrder);
+  const user = await sessionUser();
+  if (user?.role === "viewer") {
+    return NextResponse.json(orders.map((order) => {
+      const safeOrder: Record<string, unknown> = { ...order };
+      for (const field of ["subtotal", "shipping", "vatRate", "vat", "total", "amountInvoiced", "creditApplied"]) delete safeOrder[field];
+      safeOrder.lineItems = order.lineItems.map((item) => {
+        if (!item || typeof item !== "object") return item;
+        const safeItem = { ...(item as Record<string, unknown>) };
+        delete safeItem.unitPrice;
+        delete safeItem.lineTotal;
+        return safeItem;
+      });
+      return safeOrder;
+    }));
+  }
+  return NextResponse.json(orders);
 }
 
 export async function POST(request: NextRequest) {

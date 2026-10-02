@@ -7,6 +7,7 @@ import { normalizeCurrency } from "@/lib/currency";
 import { buildCategoryLookup, groupIntoCategoryLines, priceLinesByCategory } from "@/lib/invoicing";
 import { ensureOrderOnWhiteboard } from "@/lib/models/WhiteboardOrder";
 import { normalizeOrderSource } from "@/lib/order-source";
+import { finalizeInvoiceCredit } from "@/lib/credit-notes";
 
 export interface ConfirmedOrderInput {
   planogram?: { id?: string; name?: string };
@@ -101,6 +102,7 @@ async function createOrderAndInvoice(body: ConfirmedOrderInput | ApprovedProform
         vatRate,
         vat,
         total,
+        creditApplied: 0,
         currency,
         poNumber: String(body.poNumber ?? ""),
         referenceNumber: String(body.referenceNumber ?? ""),
@@ -132,6 +134,9 @@ async function createOrderAndInvoice(body: ConfirmedOrderInput | ApprovedProform
         vatRate,
         vat,
         total,
+        creditApplied: 0,
+        amountDue: total,
+        creditFinalized: false,
         currency,
         status: "issued",
       });
@@ -157,6 +162,16 @@ async function createOrderAndInvoice(body: ConfirmedOrderInput | ApprovedProform
   } catch (error) {
     if (!quoted) await Promise.all([Invoice.deleteOne({ _id: invoice._id }), Order.deleteOne({ _id: order._id })]);
     throw new Error("could not add order to the digital whiteboard", { cause: error });
+  }
+
+  try {
+    invoice = await finalizeInvoiceCredit(String(invoice._id));
+    order = await Order.findById(order._id) ?? order;
+  } catch (error) {
+    // A proforma approval is retryable by source ID. Normal orders already
+    // exist here, so leave their invoice pending for repair on invoice read.
+    if (quoted) throw error;
+    console.error("Order created but credit allocation needs retry", error);
   }
 
   try {

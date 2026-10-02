@@ -6,6 +6,7 @@ import { Invoice, nextInvoiceNumber, serializeInvoice } from "@/lib/models/Invoi
 import { groupIntoCategoryLines } from "@/lib/invoicing";
 import { logActivity } from "@/lib/activity";
 import { formatCurrency, normalizeCurrency } from "@/lib/currency";
+import { finalizeInvoiceCredit } from "@/lib/credit-notes";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -30,8 +31,16 @@ export async function POST(
     return NextResponse.json({ error: "amount must be greater than 0" }, { status: 400 });
   }
 
-  const order = await Order.findById(id);
+  let order = await Order.findById(id);
   if (!order) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  const mainInvoice = await Invoice.findOne({ orderId: order._id, isPartial: false });
+  if (mainInvoice?.creditFinalized === false) {
+    try { await finalizeInvoiceCredit(String(mainInvoice._id)); }
+    catch { return NextResponse.json({ error: "credit allocation is still in progress; try again shortly" }, { status: 409 }); }
+    order = await Order.findById(id);
+    if (!order) return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
 
   const orderTotal = round2(order.total ?? 0);
   const currency = normalizeCurrency(order.currency);
@@ -42,8 +51,9 @@ export async function POST(
     );
   }
 
+  const creditApplied = round2(order.creditApplied ?? 0);
   const previouslyPaid = round2(order.amountInvoiced ?? 0);
-  const remaining = round2(orderTotal - previouslyPaid);
+  const remaining = round2(orderTotal - creditApplied - previouslyPaid);
   if (remaining <= 0) {
     return NextResponse.json({ error: "this order is already fully invoiced" }, { status: 400 });
   }
@@ -77,6 +87,11 @@ export async function POST(
     vatRate: order.vatRate ?? 0,
     vat: order.vat ?? 0,
     total: orderTotal,
+    creditApplied: 0,
+    priorCreditApplied: creditApplied,
+    creditNoteNumbers: mainInvoice?.creditNoteNumbers ?? [],
+    amountDue: amount,
+    creditFinalized: true,
     currency,
     status: "issued",
     isPartial: true,

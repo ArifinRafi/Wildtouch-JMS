@@ -63,6 +63,8 @@ export interface Order {
   componentRequirements: OrderComponentRequirement[];
   subtotal: number;
   total: number;
+  /** Client credit applied to the main invoice; order line prices remain gross. */
+  creditApplied?: number;
   currency?: "GBP" | "EUR";
   /** Sum of partial-invoice payments issued so far. */
   amountInvoiced?: number;

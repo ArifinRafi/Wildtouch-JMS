@@ -92,6 +92,7 @@ const OrderSchema = new Schema(
     vatRate: { type: Number, default: 0, min: 0 },
     vat: { type: Number, default: 0, min: 0 },
     total: { type: Number, default: 0, min: 0 },
+    creditApplied: { type: Number, default: 0, min: 0 },
     currency: { type: String, enum: ["GBP", "EUR"], default: "GBP" },
     /** Sum of partial-invoice payments issued so far (installments against the total). */
     amountInvoiced: { type: Number, default: 0, min: 0 },
@@ -132,6 +133,7 @@ export function serializeOrder(doc: {
   vatRate?: number;
   vat?: number;
   total?: number;
+  creditApplied?: number;
   currency?: string;
   amountInvoiced?: number;
   poNumber?: string;
@@ -157,6 +159,7 @@ export function serializeOrder(doc: {
     vatRate: doc.vatRate ?? 0,
     vat: doc.vat ?? 0,
     total: doc.total ?? 0,
+    creditApplied: doc.creditApplied ?? 0,
     currency: doc.currency ?? "GBP",
     amountInvoiced: doc.amountInvoiced ?? 0,
     poNumber: doc.poNumber ?? "",

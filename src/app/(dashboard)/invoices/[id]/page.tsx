@@ -49,6 +49,12 @@ interface Invoice {
   vatRate: number;
   vat: number;
   total: number;
+  creditApplied?: number;
+  amountDue?: number;
+  creditNoteNumbers?: string[];
+  creditFinalized?: boolean;
+  creditReversalPending?: boolean;
+  priorCreditApplied?: number;
   currency: string;
   status: string;
   isPartial?: boolean;
@@ -144,10 +150,15 @@ table.items td.q,table.items td.p,table.items td.t{text-align:right;white-space:
   <div class="trow"><span>VAT ${inv.vatRate}%</span><span>${money(inv.vat)}</span></div>
   ${inv.isPartial
     ? `<div class="trow"><span>Total incl. VAT</span><span>${money(inv.total)}</span></div>
+  ${(inv.priorCreditApplied ?? 0) > 0 ? `<div class="trow"><span>Credit note applied to order${inv.creditNoteNumbers?.length ? ` (${esc(inv.creditNoteNumbers.join(", "))})` : ""}</span><span>&minus; ${money(inv.priorCreditApplied ?? 0)}</span></div>` : ""}
   <div class="trow"><span>Previously invoiced</span><span>&minus; ${money(inv.previouslyPaid ?? 0)}</span></div>
   <div class="trow grand"><span>Amount due now</span><span>${money(inv.paymentAmount ?? 0)}</span></div>
   <div class="trow balance"><span>Balance remaining</span><span>${money(inv.balanceDue ?? 0)}</span></div>`
-    : `<div class="trow grand"><span>Total incl. VAT</span><span>${money(inv.total)}</span></div>`}
+    : (inv.creditApplied ?? 0) > 0
+      ? `<div class="trow"><span>Total incl. VAT</span><span>${money(inv.total)}</span></div>
+  <div class="trow"><span>Credit note${inv.creditNoteNumbers?.length ? ` (${esc(inv.creditNoteNumbers.join(", "))})` : ""}</span><span>&minus; ${money(inv.creditApplied ?? 0)}</span></div>
+  <div class="trow grand"><span>Amount due</span><span>${money(inv.amountDue ?? inv.total - (inv.creditApplied ?? 0))}</span></div>`
+      : `<div class="trow grand"><span>Total incl. VAT</span><span>${money(inv.total)}</span></div>`}
 </div>
 <div class="pay">
   <div class="ph">Payment Instructions:</div>
@@ -467,11 +478,14 @@ export default function InvoiceViewPage() {
               </span>
             )}
           </div>
-          <Button onClick={printInvoice} className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold">
+          <Button onClick={printInvoice} disabled={inv.creditFinalized === false || inv.creditReversalPending === true} className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 text-white font-semibold">
             <Printer className="h-4 w-4" /> Download PDF
           </Button>
         </div>
       </motion.div>
+
+      {inv.creditFinalized === false && <p role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">Credit is still being applied. Refresh this invoice before downloading or sending it.</p>}
+      {inv.creditReversalPending && <p role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">This invoice is being deleted and its credit is being restored. Refresh before using it.</p>}
 
       <div className="flex flex-col lg:flex-row gap-6 items-start">
         {/* Online invoice — identical to the printed PDF (same HTML) */}

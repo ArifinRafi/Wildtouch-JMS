@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import {
@@ -49,6 +49,7 @@ import {
 } from "@/lib/client-status";
 import { useRole } from "@/lib/hooks/use-role";
 import { useAgents } from "@/lib/hooks/use-agents";
+import { formatCurrency } from "@/lib/currency";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function parseDaysAgo(str?: string): number {
@@ -110,7 +111,17 @@ const filterOptions: { label: string; value: string }[] = [
 export default function ClientsPage() {
   const store = useAppStore();
   const clientList = store.clients;
-  const { isAdmin } = useRole();
+  const { isAdmin, canWrite, isLoading: roleLoading } = useRole();
+  const [creditBalances, setCreditBalances] = useState<Record<string, { GBP: number; EUR: number }>>({});
+  useEffect(() => {
+    if (roleLoading || !canWrite) return;
+    let active = true;
+    fetch("/api/credit-notes/balances", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : {})
+      .then((balances) => { if (active) setCreditBalances(balances); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [canWrite, roleLoading]);
   const { agents } = useAgents();
   const agentNameById = useMemo(
     () => new Map(agents.map((agent) => [agent.id, agent.name])),
@@ -602,6 +613,7 @@ export default function ClientsPage() {
                         {/* Client Name */}
                         <td className="px-5 py-3.5 align-middle">
                           <p className="text-sm font-semibold leading-tight">{client.name}</p>
+                          {canWrite && creditBalances[client.id] && (creditBalances[client.id].GBP > 0 || creditBalances[client.id].EUR > 0) && <p className="mt-0.5 text-[10px] font-semibold text-emerald-700">Credit: {[creditBalances[client.id].GBP > 0 ? formatCurrency(creditBalances[client.id].GBP, "GBP") : "", creditBalances[client.id].EUR > 0 ? formatCurrency(creditBalances[client.id].EUR, "EUR") : ""].filter(Boolean).join(" · ")}</p>}
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-[10px] text-muted-foreground">{client.id}</span>
                             <Badge

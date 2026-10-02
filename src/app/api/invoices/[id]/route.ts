@@ -6,6 +6,7 @@ import { Invoice, serializeInvoice } from "@/lib/models/Invoice";
 import { Order } from "@/lib/models/Order";
 import { logActivity } from "@/lib/activity";
 import { isInvoicePaymentStatus } from "@/lib/invoice-status";
+import { finalizeInvoiceCredit, restoreInvoiceCredit } from "@/lib/credit-notes";
 
 export async function GET(
   _request: NextRequest,
@@ -16,8 +17,12 @@ export async function GET(
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
   }
   await connectDB();
-  const doc = await Invoice.findById(id).lean();
+  let doc = await Invoice.findById(id).lean();
   if (!doc) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (doc.creditFinalized === false && !doc.creditReversalPending) {
+    try { doc = (await finalizeInvoiceCredit(id)).toObject(); }
+    catch (error) { console.error("Invoice credit finalization needs retry", error); }
+  }
   return NextResponse.json(serializeInvoice(doc));
 }
 
@@ -93,6 +98,18 @@ export async function DELETE(
   if (!invoice) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const orderId = invoice.orderId ? String(invoice.orderId) : "";
+  const related = orderId && isValidObjectId(orderId)
+    ? await Invoice.find({ orderId }).lean()
+    : [invoice];
+  if (related.some((item) => item.creditFinalized === false)) {
+    return NextResponse.json({ error: "credit allocation is in progress; try deleting again shortly" }, { status: 409 });
+  }
+
+  const creditedIds = related.filter((item) => (item.creditApplied ?? 0) > 0 || item.creditReversalPending).map((item) => String(item._id));
+  if (creditedIds.length) {
+    await Invoice.updateMany({ _id: { $in: creditedIds } }, { $set: { creditReversalPending: true } });
+    for (const creditedId of creditedIds) await restoreInvoiceCredit(creditedId);
+  }
 
   let deletedInvoices = 1;
   let orderDeleted = false;
