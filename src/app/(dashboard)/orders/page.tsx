@@ -23,6 +23,7 @@ import {
   ClipboardList,
   Search,
   ContactRound,
+  Download,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +42,7 @@ import { PartialInvoiceDialog } from "@/components/orders/partial-invoice-dialog
 import { formatCurrency, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
 import { useAgents, type Agent } from "@/lib/hooks/use-agents";
 import { orderSourceLabel } from "@/lib/order-source";
+import { buildOrdersExcel } from "@/lib/orders-excel";
 
 type CurrencyTotals = Record<SupportedCurrency, number>;
 
@@ -92,7 +94,7 @@ function dateKey(iso: string | null): string {
 export default function OrdersPage() {
   const { orders, loading, deleteOrder, refresh } = useOrders();
   const { agents } = useAgents();
-  const { isAdmin } = useRole();
+  const { isAdmin, isViewer, isLoading: roleLoading } = useRole();
   const router = useRouter();
   const [toDelete, setToDelete] = useState<Order | null>(null);
   const [partialFor, setPartialFor] = useState<Order | null>(null);
@@ -140,6 +142,23 @@ export default function OrdersPage() {
     setEndDate("");
     setSearch("");
     setAgentSearch("");
+  };
+
+  const downloadExcel = () => {
+    const workbook = buildOrdersExcel(
+      filtered,
+      { startDate, endDate, search, agentSearch },
+      new Date(),
+      !roleLoading && !isViewer,
+    );
+    const url = URL.createObjectURL(new Blob([workbook], { type: "application/vnd.ms-excel;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `wildtouch-orders-${startDate || "all"}-${endDate || "all"}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const dateRangeText = startDate && endDate
@@ -259,6 +278,9 @@ export default function OrdersPage() {
             </div>
           </div>
           <p className="pb-2 text-xs font-medium text-muted-foreground">{dateRangeText}</p>
+          <Button type="button" variant="outline" className="h-10 gap-2 rounded-xl" onClick={downloadExcel} disabled={loading || filtered.length === 0 || roleLoading}>
+            <Download className="h-4 w-4" /> Export Excel
+          </Button>
           {hasFilters && (
             <Button type="button" variant="outline" className="h-10 gap-1.5 rounded-xl sm:ml-auto" onClick={clearFilters}>
               <X className="h-3.5 w-3.5" /> Clear Filters
