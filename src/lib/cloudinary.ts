@@ -10,11 +10,13 @@ export async function getUploadConfig(): Promise<UploadConfig> {
   if (cached) return cached;
   try {
     const res = await fetch("/api/upload-config", { cache: "no-store" });
-    cached = (await res.json()) as UploadConfig;
+    if (!res.ok) throw new Error("Could not load image upload configuration");
+    const config = (await res.json()) as UploadConfig;
+    if (config.configured) cached = config;
+    return config;
   } catch {
-    cached = { configured: false, cloudName: "", preset: "" };
+    return { configured: false, cloudName: "", preset: "" };
   }
-  return cached;
 }
 
 /** Upload an image file to Cloudinary; returns the secure URL. */
@@ -39,7 +41,10 @@ export async function uploadImage(file: File): Promise<string> {
     throw new Error(msg);
   }
   const data = await res.json();
-  return data.secure_url as string;
+  if (typeof data.secure_url !== "string" || !data.secure_url.startsWith("https://")) {
+    throw new Error("Image hosting did not return a secure image URL.");
+  }
+  return data.secure_url;
 }
 
 /** Derive a small, optimized thumbnail URL from a Cloudinary image URL. */

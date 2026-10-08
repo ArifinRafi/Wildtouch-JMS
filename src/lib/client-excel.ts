@@ -21,6 +21,8 @@ const COLUMNS: Column[] = [
   { label: "Client Name", key: "name", width: 180 },
   { label: "Mother Company", key: "motherCompany", width: 150 },
   { label: "Company Number", key: "companyNumber", width: 120 },
+  { label: "Client Source", key: "clientSource", width: 160 },
+  { label: "Theme", key: "theme", width: 160 },
   { label: "Agent ID", key: "agentId", width: 90 },
   { label: "Agent Name", key: "agentName", width: 150 },
   { label: "Main Buyer Names", key: "mainBuyerNames", width: 150 },
@@ -49,10 +51,12 @@ const COLUMNS: Column[] = [
   { label: "Require PO", key: "requirePO", width: 80 },
   { label: "Email Invoice To", key: "emailInvoiceTo", width: 180 },
   { label: "VAT Rate (%)", key: "vatRate", width: 80, type: "Number" },
-  { label: "Top Selling Animals", key: "topSellingAnimals", width: 180 },
-  { label: "Slow Seller Designs", key: "slowSellerDesigns", width: 180 },
   { label: "Substitute Designs", key: "substituteDesigns", width: 100 },
   { label: "Substitute Design Notes", key: "substituteDesignNotes", width: 220 },
+  { label: "Sample", key: "sample", width: 80 },
+  { label: "Sample Notes", key: "sampleNotes", width: 220 },
+  { label: "Slat Board", key: "slatBoard", width: 90 },
+  { label: "Off Stand", key: "offStand", width: 90 },
   { label: "Stands Info", key: "standsInfo", width: 180 },
   { label: "Upsell Info", key: "upsellInfo", width: 180 },
   { label: "Cards Used", key: "cardsUsed", width: 120 },
@@ -63,10 +67,12 @@ const COLUMNS: Column[] = [
   { label: "Complaints & Issues", key: "complaintsIssues", width: 320 },
   { label: "Client Notes", key: "clientNotes", width: 320 },
   { label: "Special Information", key: "specialInformation", width: 240 },
+  { label: "Special Information Date", key: "specialInformationDate", width: 120 },
   { label: "Last Order", key: "lastOrder", width: 100 },
   { label: "Total Orders", key: "totalOrders", width: 80, type: "Number" },
   { label: "Brand Card URL", key: "brandCardImage", width: 220 },
   { label: "Barcode URL", key: "barcodeImage", width: 220 },
+  { label: "All Barcode URLs", key: "barcodeImages", width: 280 },
 ];
 
 function xml(value: unknown): string {
@@ -84,9 +90,10 @@ function displayValue(client: ExportClient, key: string): string | number {
     return String(value || client.otherContactAndPosition || "");
   }
   if (key === "accountStatus") return accountStatusLabel(value);
-  if (key === "requirePO" || key === "substituteDesigns") {
+  if (key === "requirePO" || key === "substituteDesigns" || key === "sample" || key === "slatBoard" || key === "offStand") {
     return value === true ? "Yes" : value === false ? "No" : "";
   }
+  if (key === "barcodeImages") return Array.isArray(value) ? value.join("\n") : "";
   if (key === "categoryPrices") {
     if (!value || typeof value !== "object" || Array.isArray(value)) return "";
     const symbol = client.pricingCurrency === "EUR" ? "€" : "£";

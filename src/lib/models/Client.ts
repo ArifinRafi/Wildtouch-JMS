@@ -1,5 +1,6 @@
 import mongoose, { Schema, type Model } from "mongoose";
 import { normalizeAccountStatus } from "@/lib/client-status";
+import { normalizeClientBarcodeImages } from "@/lib/client-profile-validation";
 
 const ClientIssueSchema = new Schema(
   {
@@ -35,6 +36,8 @@ const ClientSchema = new Schema(
     contactNumber: { type: String, default: "" },
     email: { type: String, default: "" },
     companyNumber: { type: String, default: "" },
+    clientSource: { type: String, default: "", maxlength: 500 },
+    theme: { type: String, default: "", maxlength: 500 },
     agentId: { type: String, default: "" },
     agentName: { type: String, default: "" },
     primaryContactName: { type: String, default: "" },
@@ -47,8 +50,16 @@ const ClientSchema = new Schema(
     lastOrder: { type: String, default: "" },
     totalOrders: { type: Number, default: 0 },
     substituteDesignNotes: { type: String, default: "" },
+    sample: { type: Boolean, default: false },
+    sampleNotes: { type: String, default: "", maxlength: 2000 },
+    slatBoard: { type: Boolean, default: false },
+    offStand: { type: Boolean, default: false },
     complaintsIssues: { type: [ClientIssueSchema], default: [] },
     clientNotes: { type: [ClientNoteSchema], default: [] },
+    specialInformation: { type: String, default: "" },
+    specialInformationDate: { type: String, default: "" },
+    barcodeImage: { type: String, default: "" },
+    barcodeImages: { type: [String], default: [] },
     pricingCurrency: { type: String, enum: ["GBP", "EUR"], default: "GBP" },
   },
   { strict: false, timestamps: true },
@@ -73,15 +84,27 @@ export async function nextClientId(): Promise<string> {
 
 /** Shape a client doc into the API/UI shape (id + all stored fields). */
 export function serializeClient(doc: Record<string, unknown>): { id: string; [key: string]: unknown } {
-  const { _id, __v, createdAt, updatedAt, ...rest } = doc as Record<string, unknown> & {
+  const { _id, __v, createdAt, updatedAt, topSellingAnimals, slowSellerDesigns, ...rest } = doc as Record<string, unknown> & {
     _id: unknown;
   };
   void __v;
   void createdAt;
   void updatedAt;
+  void topSellingAnimals;
+  void slowSellerDesigns;
+  const barcodeImages = normalizeClientBarcodeImages(rest.barcodeImages, rest.barcodeImage);
   return {
     id: String(_id),
     ...rest,
     accountStatus: normalizeAccountStatus(rest.accountStatus),
+    slatBoard: rest.slatBoard === true,
+    offStand: rest.offStand === true,
+    specialInformationDate: typeof rest.specialInformationDate === "string" ? rest.specialInformationDate : "",
+    clientSource: typeof rest.clientSource === "string" ? rest.clientSource : "",
+    theme: typeof rest.theme === "string" ? rest.theme : "",
+    sample: rest.sample === true,
+    sampleNotes: typeof rest.sampleNotes === "string" ? rest.sampleNotes : "",
+    barcodeImages,
+    barcodeImage: barcodeImages[0] ?? "",
   };
 }

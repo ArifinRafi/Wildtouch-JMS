@@ -81,6 +81,8 @@ export interface Client {
   // === Branding / parent company (optional) ===
   motherCompany?: string;
   companyNumber?: string;
+  clientSource?: string;
+  theme?: string;
 
   // === Assigned sales agent (optional) ===
   agentId?: string;
@@ -89,9 +91,10 @@ export interface Client {
   // === Additional contacts (optional, repeatable) ===
   additionalContacts?: AdditionalContact[];
 
-  // === Media (optional, stored as data URLs) ===
+  // === Media (hosted URLs; older records may still contain data URLs) ===
   brandCardImage?: string;
   barcodeImage?: string;
+  barcodeImages?: string[];
 
   // === Contact (optional) ===
   mainBuyerNames?: string;
@@ -118,10 +121,12 @@ export interface Client {
   emailInvoiceTo?: string;
 
   // === Sales intelligence (optional) ===
-  topSellingAnimals?: string;
-  slowSellerDesigns?: string;
   substituteDesigns?: boolean;
   substituteDesignNotes?: string;
+  sample?: boolean;
+  sampleNotes?: string;
+  slatBoard?: boolean;
+  offStand?: boolean;
   webAddress?: string;
   standsInfo?: string;
   upsellInfo?: string;
@@ -137,6 +142,7 @@ export interface Client {
   complaintsIssues?: ClientIssue[];
   clientNotes?: ClientNote[];
   specialInformation?: string;
+  specialInformationDate?: string;
 }
 
 export const clients: Client[] = [

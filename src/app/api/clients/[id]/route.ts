@@ -5,6 +5,7 @@ import { Client, serializeClient } from "@/lib/models/Client";
 import { logActivity } from "@/lib/activity";
 import { normalizeCurrency } from "@/lib/currency";
 import { normalizeAccountStatus } from "@/lib/client-status";
+import { syncClientBarcodeFields, validateClientProfileFields } from "@/lib/client-profile-validation";
 
 export async function GET(
   _request: NextRequest,
@@ -24,6 +25,8 @@ export async function PATCH(
   const { id } = await ctx.params;
   await connectDB();
   const body = await request.json();
+  const profileError = validateClientProfileFields(body);
+  if (profileError) return NextResponse.json({ error: profileError }, { status: 400 });
 
   if ("categoryPrices" in body || "pricingCurrency" in body) {
     const gate = await requireAdmin();
@@ -32,6 +35,9 @@ export async function PATCH(
   const { id: _ignore, _id: _ignore2, ...patch } = body;
   void _ignore;
   void _ignore2;
+  delete patch.topSellingAnimals;
+  delete patch.slowSellerDesigns;
+  syncClientBarcodeFields(patch);
   if ("pricingCurrency" in patch) patch.pricingCurrency = normalizeCurrency(patch.pricingCurrency);
   if ("accountStatus" in patch) patch.accountStatus = normalizeAccountStatus(patch.accountStatus);
 

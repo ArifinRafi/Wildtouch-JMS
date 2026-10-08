@@ -5,6 +5,7 @@ import { logActivity } from "@/lib/activity";
 import { requireAdmin, isResponse } from "@/lib/authz";
 import { normalizeCurrency } from "@/lib/currency";
 import { normalizeAccountStatus } from "@/lib/client-status";
+import { syncClientBarcodeFields, validateClientProfileFields } from "@/lib/client-profile-validation";
 
 export async function GET() {
   await connectDB();
@@ -15,6 +16,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   await connectDB();
   const body = await request.json();
+  const profileError = validateClientProfileFields(body);
+  if (profileError) return NextResponse.json({ error: profileError }, { status: 400 });
 
   if ("categoryPrices" in body || "pricingCurrency" in body) {
     const gate = await requireAdmin();
@@ -29,6 +32,9 @@ export async function POST(request: NextRequest) {
   // Ignore any client-supplied id; always assign the next sequential one.
   const { id: _ignore, ...rest } = body;
   void _ignore;
+  delete rest.topSellingAnimals;
+  delete rest.slowSellerDesigns;
+  syncClientBarcodeFields(rest);
   if ("pricingCurrency" in rest) rest.pricingCurrency = normalizeCurrency(rest.pricingCurrency);
   rest.accountStatus = normalizeAccountStatus(rest.accountStatus);
   const _id = await nextClientId();

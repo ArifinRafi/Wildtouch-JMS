@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { CategoryPriceEditor } from "@/components/clients/category-price-editor";
+import { BarcodeImagesUpload } from "@/components/clients/barcode-images-upload";
 import { uploadImage } from "@/lib/cloudinary";
 import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { useAppStore } from "@/lib/store/app-store";
@@ -51,6 +52,7 @@ import {
 import { useRole } from "@/lib/hooks/use-role";
 import { useAgents } from "@/lib/hooks/use-agents";
 import { currencySymbol, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
+import { normalizeClientBarcodeImages } from "@/lib/client-profile-validation";
 
 // ─── Status config ──────────────────────────────────────────────────────────
 const statusConfig: Record<AccountStatus, { label: string; className: string }> = {
@@ -84,6 +86,8 @@ interface ClientForm {
   name: string;
   motherCompany: string;
   companyNumber: string;
+  clientSource: string;
+  theme: string;
   agentId: string;
   mainBuyerNames: string;
   primaryContactName: string;
@@ -111,10 +115,12 @@ interface ClientForm {
   requirePO: boolean;
   emailInvoiceTo: string;
   vatRate: string;
-  topSellingAnimals: string;
-  slowSellerDesigns: string;
   substituteDesigns: boolean;
   substituteDesignNotes: string;
+  sample: boolean;
+  sampleNotes: string;
+  slatBoard: boolean;
+  offStand: boolean;
   complaintsIssues: ClientIssue[];
   clientNotes: ClientNote[];
   standsInfo: string;
@@ -122,11 +128,12 @@ interface ClientForm {
   cardsUsed: string;
   boxesUsed: string;
   specialInformation: string;
+  specialInformationDate: string;
   pricingCurrency: SupportedCurrency;
   categoryPrices: Record<string, string>;
   additionalContacts: AdditionalContact[];
   brandCardImage: string;
-  barcodeImage: string;
+  barcodeImages: string[];
 }
 
 function clientToForm(c: Client): ClientForm {
@@ -140,6 +147,8 @@ function clientToForm(c: Client): ClientForm {
     name: c.name,
     motherCompany: c.motherCompany ?? "",
     companyNumber: c.companyNumber ?? "",
+    clientSource: c.clientSource ?? "",
+    theme: c.theme ?? "",
     agentId: c.agentId ?? "",
     mainBuyerNames: c.mainBuyerNames ?? "",
     primaryContactName: c.primaryContactName || c.otherContactAndPosition || "",
@@ -167,10 +176,12 @@ function clientToForm(c: Client): ClientForm {
     requirePO: c.requirePO ?? false,
     emailInvoiceTo: c.emailInvoiceTo ?? "",
     vatRate: c.vatRate != null ? String(c.vatRate) : "20",
-    topSellingAnimals: c.topSellingAnimals ?? "",
-    slowSellerDesigns: c.slowSellerDesigns ?? "",
     substituteDesigns: c.substituteDesigns ?? false,
     substituteDesignNotes: c.substituteDesignNotes ?? "",
+    sample: c.sample ?? false,
+    sampleNotes: c.sampleNotes ?? "",
+    slatBoard: c.slatBoard ?? false,
+    offStand: c.offStand ?? false,
     complaintsIssues: c.complaintsIssues ?? [],
     clientNotes: c.clientNotes ?? [],
     standsInfo: c.standsInfo ?? "",
@@ -178,11 +189,12 @@ function clientToForm(c: Client): ClientForm {
     cardsUsed: c.cardsUsed ?? "",
     boxesUsed: c.boxesUsed ?? "",
     specialInformation: c.specialInformation ?? "",
+    specialInformationDate: c.specialInformationDate ?? "",
     pricingCurrency: normalizeCurrency(c.pricingCurrency),
     categoryPrices,
     additionalContacts: c.additionalContacts ?? [],
     brandCardImage: c.brandCardImage ?? "",
-    barcodeImage: c.barcodeImage ?? "",
+    barcodeImages: normalizeClientBarcodeImages(c.barcodeImages, c.barcodeImage),
   };
 }
 
@@ -202,8 +214,9 @@ export default function ClientDetailPage() {
     client ? clientToForm(client) : ({} as ClientForm),
   );
   const [formError, setFormError] = useState("");
+  const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [uploading, setUploading] = useState<{ brandCardImage?: boolean; barcodeImage?: boolean }>({});
+  const [uploading, setUploading] = useState<{ brandCardImage?: boolean; barcodeImages?: boolean }>({});
   const [imgError, setImgError] = useState("");
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
 
@@ -316,7 +329,7 @@ export default function ClientDetailPage() {
 
   // ── Image uploads (Cloudinary) ──
   const handleImageUpload = useCallback(
-    async (key: "brandCardImage" | "barcodeImage", file: File | null) => {
+    async (key: "brandCardImage", file: File | null) => {
       if (!file) return;
       setUploading((u) => ({ ...u, [key]: true }));
       setImgError("");
@@ -331,12 +344,31 @@ export default function ClientDetailPage() {
     },
     [],
   );
-  const clearImage = useCallback((key: "brandCardImage" | "barcodeImage") => {
+  const clearImage = useCallback((key: "brandCardImage") => {
     setForm((prev) => ({ ...prev, [key]: "" }));
   }, []);
 
+  const appendBarcodeImages = useCallback((urls: string[]) => {
+    setForm((prev) => ({ ...prev, barcodeImages: [...new Set([...prev.barcodeImages, ...urls])] }));
+  }, []);
+  const removeBarcodeImage = useCallback((index: number) => {
+    setForm((prev) => ({ ...prev, barcodeImages: prev.barcodeImages.filter((_, i) => i !== index) }));
+  }, []);
+  const setPrimaryBarcodeImage = useCallback((index: number) => {
+    setForm((prev) => {
+      const images = [...prev.barcodeImages];
+      const [selected] = images.splice(index, 1);
+      return selected ? { ...prev, barcodeImages: [selected, ...images] } : prev;
+    });
+  }, []);
+
   // ── Save ──
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
+    if (saving) return;
+    if (uploading.brandCardImage || uploading.barcodeImages) {
+      setFormError("Wait for image uploads to finish before saving.");
+      return;
+    }
     if (!form.name.trim() || !form.contactNumber.trim() || !form.email.trim()) {
       setFormError("Name, Mobile, and Email are required.");
       return;
@@ -383,12 +415,15 @@ export default function ClientDetailPage() {
       accountStatus: (form.accountStatus as AccountStatus) || "new_client",
       motherCompany: form.motherCompany.trim(),
       companyNumber: form.companyNumber.trim(),
+      clientSource: form.clientSource.trim(),
+      theme: form.theme.trim(),
       agentId: selectedAgent?.id ?? "",
       agentName: selectedAgent?.name ?? "",
       additionalContacts:
         cleanedAdditionalContacts.length > 0 ? cleanedAdditionalContacts : undefined,
       brandCardImage: form.brandCardImage || undefined,
-      barcodeImage: form.barcodeImage || undefined,
+      barcodeImages: form.barcodeImages,
+      barcodeImage: form.barcodeImages[0] ?? "",
       mainBuyerNames: form.mainBuyerNames.trim() || undefined,
       primaryContactName: form.primaryContactName.trim() || undefined,
       primaryContactPosition: form.primaryContactPosition.trim() || undefined,
@@ -407,10 +442,12 @@ export default function ClientDetailPage() {
       requirePO: form.requirePO,
       emailInvoiceTo: form.emailInvoiceTo.trim() || undefined,
       vatRate: Math.max(0, parseFloat(form.vatRate) || 0),
-      topSellingAnimals: form.topSellingAnimals.trim() || undefined,
-      slowSellerDesigns: form.slowSellerDesigns.trim() || undefined,
       substituteDesigns: form.substituteDesigns,
       substituteDesignNotes: form.substituteDesignNotes.trim(),
+      sample: form.sample,
+      sampleNotes: form.sampleNotes.trim(),
+      slatBoard: form.slatBoard,
+      offStand: form.offStand,
       complaintsIssues: cleanedComplaintsIssues,
       clientNotes: cleanedClientNotes,
       standsInfo: form.standsInfo.trim() || undefined,
@@ -423,12 +460,20 @@ export default function ClientDetailPage() {
             categoryPrices: categoryPricesObj,
           }
         : {}),
-      specialInformation: form.specialInformation.trim() || undefined,
+      specialInformation: form.specialInformation.trim(),
+      specialInformationDate: form.specialInformationDate,
     };
 
-    store.updateClient(id, data);
-    setMode("view");
-  }, [agents, form, id, isAdmin, store]);
+    setSaving(true);
+    try {
+      await store.updateClient(id, data);
+      setMode("view");
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Could not save client.");
+    } finally {
+      setSaving(false);
+    }
+  }, [agents, form, id, isAdmin, store, uploading, saving]);
 
   // ── Delete ──
   const handleDelete = useCallback(() => {
@@ -470,6 +515,7 @@ export default function ClientDetailPage() {
     agents.find((agent) => agent.id === client.agentId)?.name || client.agentName;
   const pricingCurrency = normalizeCurrency(client.pricingCurrency);
   const pricingSymbol = currencySymbol(pricingCurrency);
+  const barcodeImages = normalizeClientBarcodeImages(client.barcodeImages, client.barcodeImage);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // VIEW MODE
@@ -532,6 +578,7 @@ export default function ClientDetailPage() {
               <ViewField label="Client Name" value={client.name} />
               <ViewField label="Mother Company" value={client.motherCompany} />
               <ViewField label="Company Number" value={client.companyNumber} />
+              <ViewField label="Client Source" value={client.clientSource} />
               <ViewField label="Agent Name" value={assignedAgentName} />
               <ViewField label="Main Buyer" value={client.mainBuyerNames} />
               <ViewField label="Primary Contact" value={client.primaryContactName || client.otherContactAndPosition} />
@@ -579,16 +626,19 @@ export default function ClientDetailPage() {
           )}
 
           {/* Product Preferences */}
-          {(client.topSellingAnimals || client.slowSellerDesigns || client.substituteDesigns !== undefined || client.substituteDesignNotes || client.standsInfo || client.upsellInfo || client.cardsUsed || client.boxesUsed) && (
+          {(client.theme || client.substituteDesigns !== undefined || client.substituteDesignNotes || client.sample !== undefined || client.sampleNotes || client.slatBoard !== undefined || client.offStand !== undefined || client.standsInfo || client.upsellInfo || client.cardsUsed || client.boxesUsed) && (
             <ViewSection title="Product Preferences" icon={<PackageCheck className="h-4 w-4" />}>
               <ViewGrid>
-                <ViewField label="Top Selling Animals" value={client.topSellingAnimals} />
-                <ViewField label="Slow Seller Designs" value={client.slowSellerDesigns} />
+                <ViewField label="Theme" value={client.theme} />
                 <ViewField
                   label="Substitute Designs"
                   value={client.substituteDesigns !== undefined ? (client.substituteDesigns ? "Yes" : "No") : undefined}
                 />
                 <ViewField label="Substitute Design Notes" value={client.substituteDesignNotes} />
+                <ViewField label="Sample" value={client.sample ? "Yes" : "No"} />
+                <ViewField label="Sample Notes" value={client.sampleNotes} />
+                <ViewField label="Slat Board" value={client.slatBoard ? "Yes" : "No"} />
+                <ViewField label="Off Stand" value={client.offStand ? "Yes" : "No"} />
                 <ViewField label="Stands Info" value={client.standsInfo} />
                 <ViewField label="Upsell Info" value={client.upsellInfo} />
                 <ViewField label="Cards Used" value={client.cardsUsed} />
@@ -685,7 +735,7 @@ export default function ClientDetailPage() {
           )}
 
           {/* Brand Card / Barcode */}
-          {(client.brandCardImage || client.barcodeImage) && (
+          {(client.brandCardImage || barcodeImages.length > 0) && (
             <ViewSection
               title="Media"
               icon={<ImageIcon className="h-4 w-4" />}
@@ -714,27 +764,23 @@ export default function ClientDetailPage() {
                     </button>
                   </div>
                 )}
-                {client.barcodeImage && (
+                {barcodeImages.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <ScanLine className="h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-                        Barcode
+                        Barcode Images
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setLightbox({ src: client.barcodeImage!, alt: "Barcode" })}
-                      title="View full screen"
-                      className="relative h-40 w-full overflow-hidden rounded-lg border border-border/30 bg-background flex items-center justify-center cursor-zoom-in"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={client.barcodeImage}
-                        alt="Barcode"
-                        className="max-h-full max-w-full object-contain"
-                      />
-                    </button>
+                    <div className="grid grid-cols-2 gap-2">
+                      {barcodeImages.map((url, index) => (
+                        <button key={`${url}-${index}`} type="button" onClick={() => setLightbox({ src: url, alt: `Barcode ${index + 1}` })} title="View full screen" className="relative flex h-32 w-full items-center justify-center overflow-hidden rounded-lg border border-border/30 bg-background cursor-zoom-in">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt={`Barcode ${index + 1}`} className="max-h-full max-w-full object-contain" />
+                          {index === 0 && <span className="absolute bottom-1 left-1 rounded bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Primary</span>}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -760,9 +806,10 @@ export default function ClientDetailPage() {
           )}
 
           {/* Special Information */}
-          {client.specialInformation && (
+          {(client.specialInformation || client.specialInformationDate) && (
             <ViewSection title="Special Information" icon={<Store className="h-4 w-4" />}>
-              <p className="text-sm whitespace-pre-wrap">{client.specialInformation}</p>
+              {client.specialInformationDate && <p className="mb-1 text-xs text-muted-foreground">{formatClientIssueDate(client.specialInformationDate)}</p>}
+              <p className="text-sm whitespace-pre-wrap">{client.specialInformation || "—"}</p>
             </ViewSection>
           )}
 
@@ -915,6 +962,10 @@ export default function ClientDetailPage() {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-clientSource">Client Source</Label>
+            <Input id="edit-clientSource" className={inputCls} maxLength={500} placeholder="How this client came to us" value={form.clientSource} onChange={(e) => setField("clientSource", e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label>Main Buyer Names</Label>
@@ -1170,14 +1221,11 @@ export default function ClientDetailPage() {
       <EditSection title="Product Intelligence" icon={<PackageCheck className="h-4 w-4" />}>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Top Selling Animals</Label>
-            <Textarea className={inputCls} rows={3} value={form.topSellingAnimals} onChange={(e) => setField("topSellingAnimals", e.target.value)} />
+            <Label htmlFor="edit-theme">Theme</Label>
+            <Input id="edit-theme" className={inputCls} maxLength={500} value={form.theme} onChange={(e) => setField("theme", e.target.value)} />
           </div>
-          <div className="space-y-1.5">
-            <Label>Slow Seller Designs</Label>
-            <Textarea className={inputCls} rows={3} value={form.slowSellerDesigns} onChange={(e) => setField("slowSellerDesigns", e.target.value)} />
-          </div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[auto_minmax(0,1fr)] md:items-end">
+          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-2 rounded-xl border border-border/40 bg-muted/10 p-3">
             <div className="flex h-10 items-center gap-2">
               <input
                 id="edit-substituteDesigns"
@@ -1198,9 +1246,30 @@ export default function ClientDetailPage() {
               />
             </div>
           </div>
+          <div className="space-y-2 rounded-xl border border-border/40 bg-muted/10 p-3">
+            <div className="flex h-10 items-center gap-2">
+              <input id="edit-sample" type="checkbox" checked={form.sample} onChange={(e) => setField("sample", e.target.checked)} className="h-4 w-4 rounded border-border/40" />
+              <Label htmlFor="edit-sample">Sample</Label>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-sampleNotes">Sample Notes</Label>
+              <Input id="edit-sampleNotes" className={inputCls} maxLength={2000} placeholder="Add sample details" value={form.sampleNotes} onChange={(e) => setField("sampleNotes", e.target.value)} />
+            </div>
+          </div>
+          </div>
           <div className="space-y-1.5">
             <Label>Stands Info</Label>
             <Textarea className={inputCls} rows={2} value={form.standsInfo} onChange={(e) => setField("standsInfo", e.target.value)} />
+          </div>
+          <div className="flex flex-wrap gap-5">
+            <div className="flex items-center gap-2">
+              <input id="edit-slatBoard" type="checkbox" checked={form.slatBoard} onChange={(e) => setField("slatBoard", e.target.checked)} className="h-4 w-4 rounded border-border/40" />
+              <Label htmlFor="edit-slatBoard">Slat Board</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input id="edit-offStand" type="checkbox" checked={form.offStand} onChange={(e) => setField("offStand", e.target.checked)} className="h-4 w-4 rounded border-border/40" />
+              <Label htmlFor="edit-offStand">Off Stand</Label>
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label>Upsell Info</Label>
@@ -1285,8 +1354,8 @@ export default function ClientDetailPage() {
         </EditSection>
       )}
 
-      {/* ── Section 7: Media (Brand Card + Barcode) ── */}
-      <EditSection title="Brand Card &amp; Barcode" icon={<ImageIcon className="h-4 w-4" />}>
+      {/* ── Section 7: Media (Brand Card + Barcodes) ── */}
+      <EditSection title="Brand Card &amp; Barcodes" icon={<ImageIcon className="h-4 w-4" />}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <ImageUploadCard
             label="Brand Card"
@@ -1297,15 +1366,7 @@ export default function ClientDetailPage() {
             onClear={() => clearImage("brandCardImage")}
             onView={() => setLightbox({ src: form.brandCardImage, alt: "Brand Card" })}
           />
-          <ImageUploadCard
-            label="Barcode"
-            icon={<ScanLine className="h-4 w-4" />}
-            value={form.barcodeImage}
-            uploading={!!uploading.barcodeImage}
-            onUpload={(file) => handleImageUpload("barcodeImage", file)}
-            onClear={() => clearImage("barcodeImage")}
-            onView={() => setLightbox({ src: form.barcodeImage, alt: "Barcode" })}
-          />
+          <BarcodeImagesUpload inputId="edit-barcode-images" images={form.barcodeImages} onAppend={appendBarcodeImages} onRemove={removeBarcodeImage} onSetPrimary={setPrimaryBarcodeImage} onUploadingChange={(value) => setUploading((current) => ({ ...current, barcodeImages: value }))} onView={(url) => setLightbox({ src: url, alt: "Barcode" })} />
         </div>
         {imgError && (
           <p className="mt-3 text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2 border border-destructive/20">{imgError}</p>
@@ -1355,8 +1416,14 @@ export default function ClientDetailPage() {
 
       {/* ── Section 9: Special Information ── */}
       <EditSection title="Special Information" icon={<Store className="h-4 w-4" />}>
-        <div className="space-y-1.5">
+        <div className="space-y-3">
+          <div className="space-y-1.5 max-w-[220px]">
+            <Label htmlFor="edit-specialInformationDate">Date</Label>
+            <Input id="edit-specialInformationDate" type="date" className={inputCls} value={form.specialInformationDate} onChange={(e) => setField("specialInformationDate", e.target.value)} />
+          </div>
+          <Label htmlFor="edit-specialInformation">Information</Label>
           <Textarea
+            id="edit-specialInformation"
             className={inputCls}
             rows={4}
             value={form.specialInformation}
@@ -1370,10 +1437,11 @@ export default function ClientDetailPage() {
         <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
           <Button
             onClick={handleSave}
+            disabled={saving || !!uploading.brandCardImage || !!uploading.barcodeImages}
             className="gap-2 rounded-xl bg-gradient-to-r from-primary to-indigo-500 hover:from-primary/90 hover:to-indigo-500/90 shadow-lg shadow-primary/20 text-white font-semibold"
           >
-            <Save className="h-4 w-4" />
-            Save Changes
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {saving ? "Saving..." : "Save Changes"}
           </Button>
         </motion.div>
         <Button variant="outline" className="gap-2 rounded-xl border-border/40" onClick={cancelEdit}>

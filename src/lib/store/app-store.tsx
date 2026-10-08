@@ -313,18 +313,27 @@ export function useAppStore() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error("Failed to add client");
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(detail?.error || "Failed to add client");
+      }
       const created: Client = await res.json();
       dispatch({ type: "INSERT_CLIENT", data: created });
       return created;
     },
-    updateClient: (id: string, data: Partial<Omit<Client, "id">>) => {
-      dispatch({ type: "UPDATE_CLIENT", id, data }); // optimistic
-      fetch(`/api/clients/${id}`, {
+    updateClient: async (id: string, data: Partial<Omit<Client, "id">>) => {
+      const res = await fetch(`/api/clients/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-      }).catch((err) => console.error(err));
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(detail?.error || "Failed to update client");
+      }
+      const updated: Client = await res.json();
+      dispatch({ type: "UPDATE_CLIENT", id, data: updated });
+      return updated;
     },
     deleteClient: (id: string) => {
       dispatch({ type: "DELETE_CLIENT", id }); // optimistic
